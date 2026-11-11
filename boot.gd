@@ -17,6 +17,10 @@ func _ready() -> void:
 		add_child(srv)
 		return
 	get_tree().root.theme = UiTheme.theme()
+	if args.has("novsync"):
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	if args.has("quality"):
+		Settings.quality = int(args.quality)
 	_shot_path = args.get("shot", "")
 	_shot_at = float(args.get("shot-at", "8"))
 	var app: Node = load("res://ui/app.gd").new()
@@ -45,6 +49,6 @@ func _process(delta: float) -> void:
 	if _t >= _shot_at:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_shot_path)
-		print("screenshot: ", _shot_path)
+		print("screenshot: ", _shot_path, "  fps: ", Engine.get_frames_per_second(), "  draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
 		_shot_path = ""
 		get_tree().quit()

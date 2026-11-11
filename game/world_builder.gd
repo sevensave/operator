@@ -123,15 +123,28 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 	mi.material_override = mat
 	mi.name = "Ground"
 	root.add_child(mi)
-	# Кольцо дальней земли за краем карты, чтобы не было обрыва.
+	# Дальняя земля вокруг карты (с дырой над долиной), чтобы у гор не было обрыва.
+	var fst := SurfaceTool.new()
+	fst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var inner := SimConst.MAP_HALF - 2.0
+	var outer := 4000.0
+	var y := 96.0
+	var rects := [Rect2(-outer, -outer, outer * 2, outer - inner), Rect2(-outer, inner, outer * 2, outer - inner),
+		Rect2(-outer, -inner, outer - inner, inner * 2), Rect2(inner, -inner, outer - inner, inner * 2)]
+	for r in rects:
+		var a := Vector3(r.position.x, y, r.position.y)
+		var b := Vector3(r.end.x, y, r.position.y)
+		var c := Vector3(r.end.x, y, r.end.y)
+		var d := Vector3(r.position.x, y, r.end.y)
+		fst.set_normal(Vector3.UP)
+		for v in [a, b, c, a, c, d]:
+			fst.add_vertex(v)
 	var far := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(6000, 6000)
-	far.mesh = pm
-	far.position = Vector3(0, 95, 0)
+	far.mesh = fst.commit()
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.38, 0.40, 0.30)
+	fm.albedo_color = Color(0.30, 0.33, 0.22)
 	fm.roughness = 1.0
+	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	far.material_override = fm
 	far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(far)

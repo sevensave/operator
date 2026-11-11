@@ -80,7 +80,7 @@ func _process(delta: float) -> void:
 	if backdrop and backdrop.visible:
 		var cam: Camera3D = backdrop.get_node("Cam")
 		var a := Time.get_ticks_msec() / 1000.0 * 0.03
-		cam.position = Vector3(cos(a) * 470.0, 150.0, sin(a) * 470.0)
+		cam.position = Vector3(cos(a) * 380.0, 120.0, sin(a) * 380.0)
 		cam.look_at(Vector3(0, 10, 0), Vector3.UP)
 	if ui and ui.name == "List":
 		_list_t -= delta
