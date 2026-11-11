@@ -7,7 +7,7 @@ uniform float nolink = 0.0;       // 0..1 — сплошной «снег»
 uniform float jam = 0.0;          // 0..1 — полосы глушилки
 uniform float hit_flash = 0.0;    // вспышка при потере дрона
 uniform float lens = 0.12;        // бочка линзы
-uniform float grain_base = 0.035;
+uniform float grain_base = 0.025;
 uniform float spectate = 0.0;     // режим наблюдения — мягче
 
 float hash(vec2 p) {
@@ -31,7 +31,8 @@ void fragment() {
 	uv.x += tear * (hash(vec2(band, t)) - 0.5) * 0.08 * (bad + jam);
 	// Кадр «прыгает» по вертикали.
 	float roll = step(0.985 - bad * 0.05, hash(vec2(floor(t * 8.0), 3.0))) * bad;
-	uv.y = fract(uv.y + roll * 0.15);
+	bool outside = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+	if (roll > 0.0) uv.y = fract(uv.y + roll * 0.15);
 
 	float ca = 0.0015 + bad * 0.006 + jam * 0.004;
 	vec3 col;
@@ -56,6 +57,6 @@ void fragment() {
 	col *= 1.0 - smoothstep(0.25, 0.75, r2 * 1.8) * 0.55;
 	col = mix(col, vec3(1.0, 0.9, 0.8), hit_flash);
 	// За краем линзы — чёрное.
-	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) col = vec3(0.0);
+	if (outside) col = vec3(0.0);
 	COLOR = vec4(col, 1.0);
 }

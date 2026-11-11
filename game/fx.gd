@@ -3,7 +3,7 @@ class_name Fx
 
 const DOME_SHADER := """
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
+render_mode unshaded, cull_disabled, blend_add, depth_draw_never, fog_disabled;
 uniform vec4 tint : source_color = vec4(0.3, 0.8, 1.0, 1.0);
 uniform float strength = 0.4;
 uniform float grid = 24.0;

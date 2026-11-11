@@ -17,7 +17,6 @@ static func _environment(root: Node3D, quality: int) -> void:
 	sky_mat.sky_horizon_color = Color(0.70, 0.70, 0.66)
 	sky_mat.ground_horizon_color = Color(0.55, 0.55, 0.50)
 	sky_mat.ground_bottom_color = Color(0.25, 0.25, 0.22)
-	sky_mat.sun_angle_max = 20.0
 	sky_mat.sky_curve = 0.12
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
@@ -25,23 +24,24 @@ static func _environment(root: Node3D, quality: int) -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.9
+	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
+	env.tonemap_exposure = 0.95
+	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.62, 0.64, 0.62)
-	env.fog_density = 0.0016
+	env.fog_density = 0.0008
 	env.fog_aerial_perspective = 0.5
 	env.fog_sky_affect = 0.35
 	env.glow_enabled = true
 	env.glow_intensity = 0.6
 	env.glow_bloom = 0.05
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 0.85
-	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 1.08
+	env.adjustment_contrast = 1.12
 	if quality >= 2:
 		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = 0.006
+		env.volumetric_fog_density = 0.003
 		env.volumetric_fog_albedo = Color(0.85, 0.85, 0.8)
 		env.volumetric_fog_length = 220.0
 		env.volumetric_fog_anisotropy = 0.6
@@ -54,9 +54,9 @@ static func _environment(root: Node3D, quality: int) -> void:
 	root.add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-38, -35, 0)
+	sun.rotation_degrees = Vector3(-32, -35, 0)
 	sun.light_color = Color(1.0, 0.94, 0.84)
-	sun.light_energy = 1.25
+	sun.light_energy = 1.6
 	sun.shadow_enabled = quality >= 1
 	sun.directional_shadow_max_distance = 260.0 if quality >= 2 else 160.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality >= 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
@@ -160,21 +160,20 @@ static func _cone(st: SurfaceTool, base: Vector3, r0: float, r1: float, h: float
 		var q1 := base + Vector3(cos(a1) * r1, h, sin(a1) * r1)
 		st.set_color(c * 0.85)
 		st.add_vertex(p0)
+		st.add_vertex(p1)
 		st.set_color(c)
 		st.add_vertex(q0)
-		st.set_color(c * 0.85)
-		st.add_vertex(p1)
 		if r1 > 0.0:
-			st.set_color(c)
 			st.add_vertex(q0)
-			st.add_vertex(q1)
 			st.set_color(c * 0.85)
 			st.add_vertex(p1)
+			st.set_color(c)
+			st.add_vertex(q1)
 		# днище
 		st.set_color(c * 0.5)
 		st.add_vertex(base)
-		st.add_vertex(p0)
 		st.add_vertex(p1)
+		st.add_vertex(p0)
 
 
 static func _trees(terrain: Terrain, root: Node3D) -> void:
