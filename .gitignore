@@ -1,0 +1,6 @@
+.godot/
+/build/
+/dist/
+*.tmp
+.DS_Store
+/tools/out/
