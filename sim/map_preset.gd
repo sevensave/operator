@@ -9,6 +9,13 @@ const RELIEF_NAMES := ["Долина", "Плато", "Хребет", "Каньо
 const RELIEF_COUNT := 5
 
 enum TreeKind { SPRUCE, LEAFY, DEAD }
+
+# Косметика: читает только клиент, на симуляцию не влияет.
+enum Daytime { DAY, DAWN, DUSK, OVERCAST, FOG, NIGHT }
+const DAYTIME_NAMES := ["день", "рассвет", "закат", "пасмурно", "туман", "лунная ночь"]
+enum Biome { SUMMER, AUTUMN, WINTER, STEPPE }
+const BIOME_NAMES := ["лето", "осень", "зима", "степь"]
+enum Precip { NONE, RAIN, SNOW }
 const WIND_NAMES := ["штиль", "умеренный ветер", "сильный ветер"]
 
 var seed := 0
@@ -55,6 +62,12 @@ var wind_gust := 4.0
 var wind_dir := 0.0
 var wind_phase := 0.0
 
+# Косметика.
+var daytime := Daytime.DAY
+var biome := Biome.SUMMER
+var precip := Precip.NONE
+var sun_azimuth := 0.0
+
 
 static func from_seed(p_seed: int) -> MapPreset:
 	var p := MapPreset.new()
@@ -66,6 +79,10 @@ static func from_seed(p_seed: int) -> MapPreset:
 	p._roll_layout(rng)
 	p._roll_forest(rng)
 	p._roll_wind(rng)
+	# Косметика — отдельным генератором, чтобы не сдвигать параметры симуляции.
+	var crng := RandomNumberGenerator.new()
+	crng.seed = hash(p_seed) ^ 0x0a7305
+	p._roll_look(crng)
 	return p
 
 
@@ -80,7 +97,7 @@ func relief_name() -> String:
 
 
 func title() -> String:
-	return relief_name()
+	return "%s · %s" % [relief_name(), DAYTIME_NAMES[daytime]]
 
 
 func _roll_relief(rng: RandomNumberGenerator) -> void:
@@ -184,6 +201,33 @@ func _roll_wind(rng: RandomNumberGenerator) -> void:
 			wind_gust = 5.0
 	wind_dir = rng.randf() * TAU
 	wind_phase = rng.randf() * 100.0
+
+
+func _roll_look(rng: RandomNumberGenerator) -> void:
+	var k := rng.randf()
+	if k < 0.30:
+		daytime = Daytime.DAY
+	elif k < 0.44:
+		daytime = Daytime.DAWN
+	elif k < 0.58:
+		daytime = Daytime.DUSK
+	elif k < 0.76:
+		daytime = Daytime.OVERCAST
+	elif k < 0.88:
+		daytime = Daytime.FOG
+	else:
+		daytime = Daytime.NIGHT
+	var b := rng.randf()
+	biome = Biome.SUMMER if b < 0.4 else (Biome.AUTUMN if b < 0.65 else (Biome.WINTER if b < 0.83 else Biome.STEPPE))
+	if tree_kind == TreeKind.DEAD and biome == Biome.SUMMER:
+		biome = Biome.STEPPE   # сухой лес среди сочной травы смотрится странно
+	precip = Precip.NONE
+	var wet := rng.randf()
+	if biome == Biome.WINTER and (daytime == Daytime.OVERCAST or daytime == Daytime.NIGHT) and wet < 0.7:
+		precip = Precip.SNOW
+	elif biome != Biome.WINTER and biome != Biome.STEPPE and daytime == Daytime.OVERCAST and wet < 0.6:
+		precip = Precip.RAIN
+	sun_azimuth = rng.randf() * TAU
 
 
 ## Опорный уровень земли: выше него ветер над гребнями усиливается.

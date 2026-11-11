@@ -53,7 +53,12 @@ func test_preset_from_seed() -> void:
 	var a := MapPreset.from_seed(4242)
 	var b := MapPreset.from_seed(4242)
 	t.check(a.relief == b.relief and a.wind_base == b.wind_base and a.tree_kind == b.tree_kind \
-		and a.shelter_ring == b.shelter_ring and a.clusters == b.clusters, "пресет детерминирован")
+		and a.shelter_ring == b.shelter_ring and a.clusters == b.clusters \
+		and a.daytime == b.daytime and a.biome == b.biome and a.precip == b.precip, "пресет детерминирован")
+	var seen := {}
+	for sd in 200:
+		seen[MapPreset.from_seed(sd).daytime] = true
+	t.check(seen.size() == MapPreset.DAYTIME_NAMES.size(), "встречаются все наборы времени суток: %d" % seen.size())
 	t.check(a.title() != "", "у карты есть название")
 
 

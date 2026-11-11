@@ -1,52 +1,132 @@
 class_name WorldBuilder
 ## Строит видимый мир по Terrain: землю, лес, руины, небо, свет и туман.
+## Время суток, погода и палитра — от пресета карты (MapPreset), как и рельеф.
 
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 
 
+const SKY_SHADER := preload("res://shaders/sky.gdshader")
+const TREE_SHADER := preload("res://shaders/tree.gdshader")
+
+
 static func build(terrain: Terrain, root: Node3D, quality: int) -> void:
-	_environment(root, quality)
+	_environment(root, quality, terrain.preset)
 	_ground(terrain, root)
 	_trees(terrain, root)
 	_ruins(terrain, root)
 
 
-static func _environment(root: Node3D, quality: int) -> void:
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.33, 0.45, 0.58)
-	sky_mat.sky_horizon_color = Color(0.70, 0.70, 0.66)
-	sky_mat.ground_horizon_color = Color(0.55, 0.55, 0.50)
-	sky_mat.ground_bottom_color = Color(0.25, 0.25, 0.22)
-	sky_mat.sky_curve = 0.12
+## Наборы времени суток/погоды: свет, небо, туман, экспозиция.
+static func atmosphere(daytime: int) -> Dictionary:
+	match daytime:
+		MapPreset.Daytime.DAWN:
+			return {"elev": 9.0, "sun": Color(1.0, 0.72, 0.50), "energy": 1.25, "top": Color(0.28, 0.36, 0.56),
+				"horizon": Color(0.95, 0.70, 0.55), "fog": Color(0.80, 0.66, 0.58), "density": 0.0011,
+				"ambient": Color(0.55, 0.50, 0.55), "amb_energy": 0.5, "sky_amb": 0.7, "exposure": 1.05,
+				"clouds": 0.42, "cloud": Color(1.0, 0.80, 0.68), "cloud_shade": Color(0.48, 0.42, 0.50), "vol": 0.006}
+		MapPreset.Daytime.DUSK:
+			return {"elev": 7.0, "sun": Color(1.0, 0.55, 0.32), "energy": 1.3, "top": Color(0.20, 0.22, 0.40),
+				"horizon": Color(0.98, 0.55, 0.35), "fog": Color(0.70, 0.50, 0.42), "density": 0.0010,
+				"ambient": Color(0.50, 0.42, 0.48), "amb_energy": 0.5, "sky_amb": 0.7, "exposure": 1.08,
+				"clouds": 0.5, "cloud": Color(1.0, 0.62, 0.42), "cloud_shade": Color(0.36, 0.30, 0.40), "vol": 0.006}
+		MapPreset.Daytime.OVERCAST:
+			return {"elev": 42.0, "sun": Color(0.86, 0.89, 0.93), "energy": 0.6, "top": Color(0.50, 0.54, 0.58),
+				"horizon": Color(0.70, 0.72, 0.73), "fog": Color(0.62, 0.64, 0.66), "density": 0.0016,
+				"ambient": Color(0.62, 0.65, 0.70), "amb_energy": 0.85, "sky_amb": 0.8, "exposure": 1.02,
+				"clouds": 0.88, "cloud": Color(0.80, 0.81, 0.83), "cloud_shade": Color(0.46, 0.48, 0.52), "vol": 0.008, "disk": 0.0}
+		MapPreset.Daytime.FOG:
+			return {"elev": 28.0, "sun": Color(0.96, 0.93, 0.86), "energy": 0.75, "top": Color(0.62, 0.65, 0.68),
+				"horizon": Color(0.78, 0.79, 0.80), "fog": Color(0.74, 0.76, 0.77), "density": 0.0042,
+				"ambient": Color(0.70, 0.72, 0.74), "amb_energy": 0.8, "sky_amb": 0.8, "exposure": 1.0,
+				"clouds": 0.7, "cloud": Color(0.88, 0.89, 0.90), "cloud_shade": Color(0.62, 0.64, 0.66), "vol": 0.012, "disk": 0.3}
+		MapPreset.Daytime.NIGHT:
+			return {"elev": 38.0, "sun": Color(0.55, 0.66, 1.0), "energy": 0.5, "top": Color(0.02, 0.03, 0.08),
+				"horizon": Color(0.10, 0.13, 0.22), "fog": Color(0.10, 0.12, 0.19), "density": 0.0011,
+				"ambient": Color(0.26, 0.32, 0.52), "amb_energy": 0.7, "sky_amb": 0.3, "exposure": 1.55,
+				"clouds": 0.3, "cloud": Color(0.22, 0.25, 0.34), "cloud_shade": Color(0.06, 0.07, 0.11), "vol": 0.004,
+				"stars": 1.0, "moon": 1.0}
+	return {"elev": 48.0, "sun": Color(1.0, 0.95, 0.86), "energy": 1.6, "top": Color(0.28, 0.44, 0.66),
+		"horizon": Color(0.70, 0.74, 0.76), "fog": Color(0.64, 0.68, 0.70), "density": 0.0007,
+		"ambient": Color(0.60, 0.64, 0.66), "amb_energy": 0.55, "sky_amb": 0.85, "exposure": 0.95,
+		"clouds": 0.35, "cloud": Color(0.98, 0.98, 0.97), "cloud_shade": Color(0.60, 0.64, 0.70), "vol": 0.003}
+
+
+## Палитры биомов для земли, деревьев и дальнего пола.
+static func palette(biome: int) -> Dictionary:
+	match biome:
+		MapPreset.Biome.AUTUMN:
+			return {"grass_a": Color(0.33, 0.27, 0.11), "grass_b": Color(0.44, 0.33, 0.13), "dirt": Color(0.32, 0.22, 0.14),
+				"rock": Color(0.40, 0.37, 0.33), "snow": Color(0.80, 0.82, 0.84), "snow_lo": 110.0, "snow_hi": 140.0,
+				"far": Color(0.34, 0.28, 0.16), "spruce": Color(0.15, 0.24, 0.13),
+				"leafy": [Color(0.72, 0.38, 0.10), Color(0.78, 0.60, 0.16), Color(0.58, 0.20, 0.10), Color(0.45, 0.42, 0.14)]}
+		MapPreset.Biome.WINTER:
+			return {"grass_a": Color(0.50, 0.49, 0.44), "grass_b": Color(0.62, 0.62, 0.60), "dirt": Color(0.34, 0.30, 0.27),
+				"rock": Color(0.34, 0.34, 0.36), "snow": Color(0.86, 0.88, 0.92), "snow_lo": -10.0, "snow_hi": 30.0,
+				"far": Color(0.78, 0.80, 0.84), "spruce": Color(0.30, 0.38, 0.36),
+				"leafy": [Color(0.42, 0.38, 0.32), Color(0.50, 0.46, 0.40)]}
+		MapPreset.Biome.STEPPE:
+			return {"grass_a": Color(0.38, 0.34, 0.18), "grass_b": Color(0.47, 0.41, 0.22), "dirt": Color(0.44, 0.34, 0.22),
+				"rock": Color(0.50, 0.43, 0.35), "snow": Color(0.80, 0.82, 0.84), "snow_lo": 900.0, "snow_hi": 1000.0,
+				"far": Color(0.44, 0.38, 0.22), "spruce": Color(0.20, 0.27, 0.15),
+				"leafy": [Color(0.38, 0.40, 0.17), Color(0.46, 0.44, 0.20)]}
+	return {"grass_a": Color(0.20, 0.27, 0.10), "grass_b": Color(0.33, 0.34, 0.15), "dirt": Color(0.30, 0.24, 0.17),
+		"rock": Color(0.38, 0.36, 0.34), "snow": Color(0.80, 0.82, 0.84), "snow_lo": 95.0, "snow_hi": 125.0,
+		"far": Color(0.30, 0.33, 0.22), "spruce": Color(0.17, 0.28, 0.14),
+		"leafy": [Color(0.24, 0.38, 0.14), Color(0.30, 0.44, 0.16), Color(0.20, 0.33, 0.12)]}
+
+
+static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
+	var at := atmosphere(preset.daytime)
+	var sky_mat := ShaderMaterial.new()
+	sky_mat.shader = SKY_SHADER
+	sky_mat.set_shader_parameter("top_color", at.top)
+	sky_mat.set_shader_parameter("horizon_color", at.horizon)
+	sky_mat.set_shader_parameter("ground_color", (at.fog as Color).darkened(0.45))
+	sky_mat.set_shader_parameter("cloud_color", at.cloud)
+	sky_mat.set_shader_parameter("cloud_shade", at.cloud_shade)
+	sky_mat.set_shader_parameter("cloud_cover", at.clouds)
+	sky_mat.set_shader_parameter("cloud_seed", float(preset.seed % 997) * 0.731)
+	var wd := Vector2(cos(preset.wind_dir), sin(preset.wind_dir))
+	sky_mat.set_shader_parameter("cloud_drift", wd * preset.wind_base * 0.0012)
+	sky_mat.set_shader_parameter("stars", at.get("stars", 0.0))
+	sky_mat.set_shader_parameter("sun_disk", at.get("disk", 1.0))
+	sky_mat.set_shader_parameter("moon", at.get("moon", 0.0))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	# Облака движутся (TIME) — отражения обновляем постепенно и в малом разрешении.
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	sky.radiance_size = Sky.RADIANCE_SIZE_64
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = at.ambient
+	env.ambient_light_sky_contribution = at.sky_amb
+	env.ambient_light_energy = at.amb_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 0.95
+	env.tonemap_exposure = at.exposure
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.62, 0.64, 0.62)
-	env.fog_density = 0.0008
+	env.fog_light_color = at.fog
+	env.fog_density = at.density
 	env.fog_aerial_perspective = 0.5
-	env.fog_sky_affect = 0.35
+	env.fog_sky_affect = 0.35 if preset.daytime != MapPreset.Daytime.FOG else 0.7
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = 0.6 if preset.daytime != MapPreset.Daytime.NIGHT else 0.9
 	env.glow_bloom = 0.05
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
+	env.adjustment_saturation = 1.08 if preset.daytime != MapPreset.Daytime.NIGHT else 0.7
 	env.adjustment_contrast = 1.12
 	if quality >= 2:
 		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = 0.003
-		env.volumetric_fog_albedo = Color(0.85, 0.85, 0.8)
+		env.volumetric_fog_density = at.vol
+		env.volumetric_fog_albedo = (at.fog as Color).lightened(0.2)
 		env.volumetric_fog_length = 220.0
 		env.volumetric_fog_anisotropy = 0.6
 		env.ssao_enabled = true
 		env.ssao_radius = 1.5
+		env.ssil_enabled = true
+		env.ssil_intensity = 0.6
 	if quality >= 1:
 		env.sdfgi_enabled = false
 	var we := WorldEnvironment.new()
@@ -54,14 +134,56 @@ static func _environment(root: Node3D, quality: int) -> void:
 	root.add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-32, -35, 0)
-	sun.light_color = Color(1.0, 0.94, 0.84)
-	sun.light_energy = 1.6
+	sun.rotation = Vector3(deg_to_rad(-at.elev), preset.sun_azimuth, 0)
+	sun.light_color = at.sun
+	sun.light_energy = at.energy
+	sun.light_angular_distance = 0.5
 	sun.shadow_enabled = quality >= 1
 	sun.directional_shadow_max_distance = 260.0 if quality >= 2 else 160.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality >= 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.light_volumetric_fog_energy = 1.4
+	sun.name = "Sun"
 	root.add_child(sun)
+
+
+## Косметические осадки вокруг камеры (только при quality ≥ 1). null — если на карте сухо.
+static func precipitation(preset: MapPreset, quality: int) -> GPUParticles3D:
+	if preset.precip == MapPreset.Precip.NONE or quality < 1:
+		return null
+	var rain := preset.precip == MapPreset.Precip.RAIN
+	var p := GPUParticles3D.new()
+	p.amount = (1600 if rain else 1200) * (2 if quality >= 2 else 1)
+	p.lifetime = 1.6 if rain else 5.0
+	p.preprocess = p.lifetime
+	p.local_coords = false
+	p.visibility_aabb = AABB(Vector3(-50, -40, -50), Vector3(100, 80, 100))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(45, 2, 45)
+	pm.direction = Vector3(0, -1, 0)
+	pm.spread = 4.0 if rain else 25.0
+	pm.initial_velocity_min = 22.0 if rain else 1.5
+	pm.initial_velocity_max = 28.0 if rain else 3.0
+	pm.gravity = Vector3(0, -9.8, 0) if rain else Vector3(0, -0.6, 0)
+	if not rain:
+		pm.turbulence_enabled = true
+		pm.turbulence_noise_strength = 1.5
+		pm.turbulence_influence_min = 0.05
+		pm.turbulence_influence_max = 0.15
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.03, 0.9) if rain else Vector2(0.12, 0.12)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.75, 0.80, 0.88, 0.35) if rain else Color(0.95, 0.96, 1.0, 0.85)
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y if rain else BaseMaterial3D.BILLBOARD_ENABLED
+	m.billboard_keep_scale = true
+	q.material = m
+	p.draw_pass_1 = q
+	p.name = "Precip"
+	return p
 
 
 static func _noise_tex(freq: float, seamless := true) -> NoiseTexture2D:
@@ -114,10 +236,16 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 			st.add_index(i + n + 1)
 			st.add_index(i + n)
 	var mesh := st.commit()
+	var pal := palette(terrain.preset.biome)
 	var mat := ShaderMaterial.new()
 	mat.shader = TERRAIN_SHADER
 	mat.set_shader_parameter("detail_noise", _noise_tex(0.02))
 	mat.set_shader_parameter("macro_noise", _noise_tex(0.008))
+	for key in ["grass_a", "grass_b", "dirt", "rock", "snow"]:
+		var col: Color = pal[key]
+		mat.set_shader_parameter(key, Vector3(col.r, col.g, col.b))
+	mat.set_shader_parameter("snow_lo", pal.snow_lo + terrain.preset.base_lift)
+	mat.set_shader_parameter("snow_hi", pal.snow_hi + terrain.preset.base_lift)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
@@ -146,7 +274,7 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 	var far := MeshInstance3D.new()
 	far.mesh = fst.commit()
 	var fm := StandardMaterial3D.new()
-	fm.albedo_color = Color(0.30, 0.33, 0.22)
+	fm.albedo_color = pal.far
 	fm.roughness = 1.0
 	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	far.material_override = fm
@@ -154,53 +282,104 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 	root.add_child(far)
 
 
-static func tree_mesh() -> ArrayMesh:
+## Три вида деревьев одной высоты (~7 м до масштаба). Вершинный цвет: rgb — оттенок,
+## a — 1 для кроны, 0 для ствола (цвет кроны задаёт экземпляр).
+static func tree_mesh(kind := MapPreset.TreeKind.SPRUCE) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var trunk := Color(0.28, 0.20, 0.14)
-	_cone(st, Vector3(0, 0, 0), 0.25, 0.18, 2.2, 6, trunk)
-	var greens := [Color(0.14, 0.24, 0.13), Color(0.17, 0.28, 0.14), Color(0.20, 0.31, 0.16)]
-	_cone(st, Vector3(0, 1.4, 0), 1.6, 0.0, 3.6, 7, greens[0])
-	_cone(st, Vector3(0, 3.0, 0), 1.25, 0.0, 3.0, 7, greens[1])
-	_cone(st, Vector3(0, 4.4, 0), 0.9, 0.0, 2.4, 7, greens[2])
+	var trunk := Color(1, 1, 1, 0)
+	match kind:
+		MapPreset.TreeKind.LEAFY:
+			_cone(st, Vector3(0, 0, 0), 0.28, 0.16, 3.6, 6, trunk)
+			_cone(st, Vector3(0, 2.4, 0), 0.12, 0.05, 1.6, 5, trunk, Vector3(0.6, 0, 0.2))
+			_cone(st, Vector3(0, 2.6, 0), 0.12, 0.05, 1.5, 5, trunk, Vector3(-0.5, 0, -0.3))
+			var crown := [Vector4(0, 4.7, 0, 1.9), Vector4(0.9, 4.0, 0.4, 1.4), Vector4(-0.8, 4.2, -0.5, 1.5),
+				Vector4(0.1, 5.7, -0.2, 1.3)]
+			for i in crown.size():
+				var c: Vector4 = crown[i]
+				var shade := 0.82 + 0.06 * i
+				_blob(st, Vector3(c.x, c.y, c.z), c.w, Color(shade, shade, shade, 1))
+		MapPreset.TreeKind.DEAD:
+			_cone(st, Vector3(0, 0, 0), 0.3, 0.06, 6.6, 6, trunk)
+			var br := [Vector3(0.7, 0, 0.3), Vector3(-0.6, 0, 0.5), Vector3(0.2, 0, -0.8), Vector3(-0.4, 0, -0.4), Vector3(0.6, 0, -0.2)]
+			for i in br.size():
+				var y := 2.0 + i * 0.85
+				_cone(st, Vector3(0, y, 0), 0.1 - i * 0.012, 0.03, 1.4 - i * 0.15, 4, trunk, br[i] * 1.2)
+		_:
+			_cone(st, Vector3(0, 0, 0), 0.25, 0.18, 2.2, 6, trunk)
+			_cone(st, Vector3(0, 1.4, 0), 1.6, 0.0, 3.6, 7, Color(0.85, 0.85, 0.85, 1))
+			_cone(st, Vector3(0, 3.0, 0), 1.25, 0.0, 3.0, 7, Color(1.0, 1.0, 1.0, 1))
+			_cone(st, Vector3(0, 4.4, 0), 0.9, 0.0, 2.4, 7, Color(1.12, 1.12, 1.12, 1))
 	st.generate_normals()
 	return st.commit()
 
 
-static func _cone(st: SurfaceTool, base: Vector3, r0: float, r1: float, h: float, seg: int, c: Color) -> void:
+## Низкополигональный «шар» кроны (октаэдр, дважды разбитый) со смещёнными вершинами.
+static func _blob(st: SurfaceTool, c: Vector3, r: float, col: Color) -> void:
+	var v := [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
+	var faces := [[0, 3, 4], [0, 4, 2], [0, 2, 5], [0, 5, 3], [1, 4, 3], [1, 2, 4], [1, 5, 2], [1, 3, 5]]
+	for f in faces:
+		_blob_tri(st, c, r, v[f[0]], v[f[1]], v[f[2]], 1, col)
+
+
+static func _blob_tri(st: SurfaceTool, c: Vector3, r: float, a: Vector3, b: Vector3, d: Vector3, depth: int, col: Color) -> void:
+	if depth > 0:
+		var ab := (a + b).normalized()
+		var bd := (b + d).normalized()
+		var da := (d + a).normalized()
+		_blob_tri(st, c, r, a, ab, da, depth - 1, col)
+		_blob_tri(st, c, r, ab, b, bd, depth - 1, col)
+		_blob_tri(st, c, r, da, bd, d, depth - 1, col)
+		_blob_tri(st, c, r, ab, bd, da, depth - 1, col)
+		return
+	for p: Vector3 in [a, d, b]:
+		var wob := 1.0 + 0.12 * sin(p.x * 7.0 + p.z * 5.0) + 0.08 * sin(p.y * 9.0)
+		var sh := 0.78 + 0.22 * (p.y * 0.5 + 0.5)
+		st.set_color(Color(col.r * sh, col.g * sh, col.b * sh, col.a))
+		st.add_vertex(c + p * r * Vector3(1.0, 0.85, 1.0) * wob)
+
+
+static func _cone(st: SurfaceTool, base: Vector3, r0: float, r1: float, h: float, seg: int, c: Color, lean := Vector3.ZERO) -> void:
 	for i in seg:
 		var a0 := TAU * i / seg
 		var a1 := TAU * (i + 1) / seg
 		var p0 := base + Vector3(cos(a0) * r0, 0, sin(a0) * r0)
 		var p1 := base + Vector3(cos(a1) * r0, 0, sin(a1) * r0)
-		var q0 := base + Vector3(cos(a0) * r1, h, sin(a0) * r1)
-		var q1 := base + Vector3(cos(a1) * r1, h, sin(a1) * r1)
-		st.set_color(c * 0.85)
+		var q0 := base + lean + Vector3(cos(a0) * r1, h, sin(a0) * r1)
+		var q1 := base + lean + Vector3(cos(a1) * r1, h, sin(a1) * r1)
+		var lo := Color(c.r * 0.85, c.g * 0.85, c.b * 0.85, c.a)
+		st.set_color(lo)
 		st.add_vertex(p0)
 		st.add_vertex(p1)
 		st.set_color(c)
 		st.add_vertex(q0)
 		if r1 > 0.0:
 			st.add_vertex(q0)
-			st.set_color(c * 0.85)
+			st.set_color(lo)
 			st.add_vertex(p1)
 			st.set_color(c)
 			st.add_vertex(q1)
 		# днище
-		st.set_color(c * 0.5)
+		st.set_color(Color(c.r * 0.5, c.g * 0.5, c.b * 0.5, c.a))
 		st.add_vertex(base)
 		st.add_vertex(p1)
 		st.add_vertex(p0)
 
 
 static func _trees(terrain: Terrain, root: Node3D) -> void:
+	var preset := terrain.preset
+	var pal := palette(preset.biome)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = tree_mesh()
+	mm.use_custom_data = true
+	var kind := preset.tree_kind
+	if kind == MapPreset.TreeKind.LEAFY and preset.biome == MapPreset.Biome.WINTER:
+		kind = MapPreset.TreeKind.DEAD   # зимой лиственные стоят голые
+	mm.mesh = tree_mesh(kind)
 	mm.instance_count = terrain.trees.size()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = terrain.seed + 3
+	var leafy: Array = pal.leafy
 	for i in terrain.trees.size():
 		var t := terrain.trees[i]
 		var g := terrain.height_at(t.x, t.y)
@@ -208,13 +387,18 @@ static func _trees(terrain: Terrain, root: Node3D) -> void:
 		var s := h / 7.0
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * (t.z / 2.0) * 1.1, s, s * (t.z / 2.0) * 1.1))
 		mm.set_instance_transform(i, Transform3D(b, Vector3(t.x, g - 0.3, t.y)))
-		var tint := rng.randf_range(0.8, 1.2)
-		mm.set_instance_color(i, Color(tint, tint * rng.randf_range(0.95, 1.08), tint))
+		var tint := rng.randf_range(0.82, 1.18)
+		var crown: Color = pal.spruce if preset.tree_kind == MapPreset.TreeKind.SPRUCE else leafy[rng.randi() % leafy.size()]
+		crown = Color(crown.r * tint, crown.g * tint * rng.randf_range(0.95, 1.06), crown.b * tint, rng.randf())
+		mm.set_instance_custom_data(i, crown)
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.9
+	var mat := ShaderMaterial.new()
+	mat.shader = TREE_SHADER
+	var trunk := Color(0.28, 0.20, 0.14) if kind != MapPreset.TreeKind.DEAD else Color(0.34, 0.30, 0.26)
+	mat.set_shader_parameter("trunk_color", Vector3(trunk.r, trunk.g, trunk.b))
+	mat.set_shader_parameter("wind_dir", Vector2(cos(preset.wind_dir), sin(preset.wind_dir)))
+	mat.set_shader_parameter("sway", 0.06 + preset.wind_base * 0.06)
 	mi.material_override = mat
 	mi.name = "Forest"
 	root.add_child(mi)

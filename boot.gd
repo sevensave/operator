@@ -49,6 +49,7 @@ func _process(delta: float) -> void:
 	if _t >= _shot_at:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_shot_path)
-		print("screenshot: ", _shot_path, "  fps: ", Engine.get_frames_per_second(), "  draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
+		print("screenshot: ", _shot_path, "  fps: ", Engine.get_frames_per_second(), "  draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			"  primitives: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
 		_shot_path = ""
 		get_tree().quit()

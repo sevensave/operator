@@ -33,6 +33,7 @@ var _last_input := DroneInput.new()
 var _was_flying := false
 var autopilot: BotAI          # отладка: дроном управляет бот (флаг --autopilot)
 var _autopilot_rw: RemoteWorld
+var _precip: GPUParticles3D      # дождь/снег вокруг камеры (косметика пресета)
 var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры для арта: вид сзади
 
 
@@ -47,6 +48,9 @@ func _ready() -> void:
 	world_root.name = "World"
 	add_child(world_root)
 	WorldBuilder.build(feed.terrain, world_root, quality)
+	_precip = WorldBuilder.precipitation(feed.terrain.preset, quality)
+	if _precip != null:
+		add_child(_precip)
 	for p in feed.players.values():
 		var pos: Vector3 = feed.terrain.shelters[p.shelter]
 		var col: Color = SimConst.PLAYER_COLORS[p.color % SimConst.PLAYER_COLORS.size()]
@@ -103,7 +107,7 @@ func _ready() -> void:
 	osd.push_line("Shift — форсаж, Пробел — подрыв, F — сеть, Tab — таблица", UiTheme.DIM)
 
 
-## «Каньон · сильный ветер» — архетип и всё, что заметно игроку.
+## «Каньон · закат · сильный ветер» — архетип и всё, что заметно игроку.
 func map_title() -> String:
 	var p: MapPreset = feed.terrain.preset
 	return "%s · %s" % [p.title(), MapPreset.WIND_NAMES[p.wind_level]]
@@ -216,6 +220,8 @@ func _process(delta: float) -> void:
 	else:
 		_spectate_camera(drones, me, delta)
 	_was_flying = mine != null
+	if _precip != null:
+		_precip.global_position = cam.global_position + cam.global_transform.basis.z * -12.0 + Vector3(0, 22, 0)
 	_update_post(mine)
 	_update_audio(mine)
 	_update_osd(mine, me, drones)
