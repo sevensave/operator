@@ -43,7 +43,7 @@ OPERATOR_SERVER=127.0.0.1:27630 godot --path .       # клиент к лока�
 
 ## Сервер
 
-Адрес по умолчанию — `DEFAULT_HOST`/`DEFAULT_PORT` в `net/config.gd`; перекрывается `[net] host/port` в `user://settings.cfg` (есть поле в настройках) и переменной `OPERATOR_SERVER=хост:порт`. Деплой: `./server/deploy.sh <ssh-хост> [udp-порт]` — собирает Linux-бинарь и поднимает контейнер (`server/Dockerfile`, `server/docker-compose.yml`). Нужен открытый UDP-порт (по умолчанию 27630).
+Боевой сервер — `150.251.139.13`, UDP `27630` (`DEFAULT_HOST`/`DEFAULT_PORT` в `net/config.gd`, ssh-хост `nether`); перекрывается `[net] host/port` в `user://settings.cfg` (есть поле в настройках) и переменной `OPERATOR_SERVER=хост:порт`. Деплой: `./server/deploy.sh nether 27630` — собирает Linux-бинарь и поднимает контейнер (`server/Dockerfile`, `server/docker-compose.yml`). Нужен открытый UDP-порт (по умолчанию 27630).
 
 ## Релиз
 

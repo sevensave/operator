@@ -2,8 +2,8 @@ class_name NetConfig
 ## Адрес игрового сервера. Порядок: переменная окружения OPERATOR_SERVER («хост» или «хост:порт»),
 ## затем user://settings.cfg ([net] host/port), затем значения по умолчанию ниже.
 
-## Адрес выделенного сервера для релиза. Заполняется при публикации (см. README, «Сервер»).
-const DEFAULT_HOST := "127.0.0.1"
+## Адрес выделенного сервера (хост nether). Локально перекрывается OPERATOR_SERVER или настройками.
+const DEFAULT_HOST := "150.251.139.13"
 const DEFAULT_PORT := 27630
 const PROTOCOL_VERSION := 1
 const GAME_VERSION := "0.1.0"
