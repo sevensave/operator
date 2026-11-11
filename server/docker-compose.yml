@@ -3,6 +3,7 @@ services:
     build: .
     image: operator-server
     restart: unless-stopped
+    tty: true   # иначе Godot буферизует вывод и логи пустые
     environment:
       - OPERATOR_PORT=${OPERATOR_PORT:-27630}
     ports:
