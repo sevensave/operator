@@ -6,7 +6,7 @@ class_name NetConfig
 const DEFAULT_HOST := "150.251.139.13"
 const DEFAULT_PORT := 27630
 const PROTOCOL_VERSION := 2
-const GAME_VERSION := "0.2.0"
+const GAME_VERSION := "0.3.0"
 
 
 static func host() -> String:
