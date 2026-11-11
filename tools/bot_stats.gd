@@ -22,7 +22,7 @@ func _initialize() -> void:
 		w.step(inputs)
 		for d in w.drones.values():
 			var b: BotAI = bots[d.owner]
-			if b.target_pid > 0:
+			if b.target_pid != 0:
 				var dd: float = d.pos.distance_to(w.shelter_center(w.players[b.target_pid]))
 				mind[d.id] = minf(mind.get(d.id, 1e9), dd)
 				if OS.get_environment("TRACE") != "" and dd < 70.0 and k % 6 == 0 and d.id < 6:

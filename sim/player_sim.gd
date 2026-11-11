@@ -46,5 +46,56 @@ func apply_array(a: Array) -> void:
 	grace = float(a[13])
 
 
+func write(b: StreamPeerBuffer) -> void:
+	b.put_32(pid)
+	b.put_8(clampi(lives, -1, 100))
+	b.put_u8(stock)
+	b.put_u8(int(clampf(respawn_t, 0, 25) * 10))
+	b.put_u16(drone_id & 0xFFFF)
+	b.put_u8(1 if eliminated else 0)
+	b.put_u8(place)
+	b.put_u8(int(clampf(trap_cd, 0, 50) * 5))
+	b.put_u8(int(clampf(trap_t, 0, 25) * 10))
+	b.put_u8(mini(hits, 255))
+	b.put_u8(mini(rams, 255))
+	b.put_u8(kind)
+	b.put_u8(int(clampf(regen_t, 0, 25) * 10))
+	b.put_u8(int(clampf(grace, 0, 25) * 10))
+
+
+## Читает запись игрока из буфера и возвращает pid (данные кладёт в self).
+func read(b: StreamPeerBuffer) -> void:
+	pid = b.get_32()
+	lives = b.get_8()
+	stock = b.get_u8()
+	respawn_t = b.get_u8() / 10.0
+	drone_id = b.get_u16()
+	eliminated = b.get_u8() != 0
+	place = b.get_u8()
+	trap_cd = b.get_u8() / 5.0
+	trap_t = b.get_u8() / 10.0
+	hits = b.get_u8()
+	rams = b.get_u8()
+	kind = b.get_u8()
+	regen_t = b.get_u8() / 10.0
+	grace = b.get_u8() / 10.0
+
+
+func copy_net(o: PlayerSim) -> void:
+	lives = o.lives
+	stock = o.stock
+	respawn_t = o.respawn_t
+	drone_id = o.drone_id
+	eliminated = o.eliminated
+	place = o.place
+	trap_cd = o.trap_cd
+	trap_t = o.trap_t
+	hits = o.hits
+	rams = o.rams
+	kind = o.kind
+	regen_t = o.regen_t
+	grace = o.grace
+
+
 func info() -> Dictionary:
 	return {"pid": pid, "name": name, "color": color, "shelter": shelter, "style": style, "kind": kind, "bot": bot}

@@ -59,7 +59,57 @@ func clone() -> DroneState:
 	return d
 
 
-## Упаковка для снапшота.
+## Компактная бинарная упаковка для снапшота (~46 байт).
+func write(b: StreamPeerBuffer) -> void:
+	b.put_u16(id & 0xFFFF)
+	b.put_32(owner)
+	b.put_u8(kind)
+	b.put_float(pos.x)
+	b.put_float(pos.y)
+	b.put_float(pos.z)
+	b.put_half(vel.x)
+	b.put_half(vel.y)
+	b.put_half(vel.z)
+	var q := rot.normalized()
+	b.put_16(int(round(q.x * 32767.0)))
+	b.put_16(int(round(q.y * 32767.0)))
+	b.put_16(int(round(q.z * 32767.0)))
+	b.put_16(int(round(q.w * 32767.0)))
+	b.put_half(angvel.x)
+	b.put_half(angvel.y)
+	b.put_half(angvel.z)
+	b.put_u8(int(clampf(throttle, 0, 1) * 255))
+	b.put_u8(int(clampf(thrust_frac, 0, 2) * 127))
+	b.put_u8(int(clampf(battery, 0, 1) * 255))
+	b.put_u8(int(clampf(signal_q, 0, 1) * 255))
+	b.put_u8(int(clampf(nolink, 0, 5) * 50))
+	b.put_u8((1 if control else 0) | (2 if trapped > 0.0 else 0) | (4 if jammed else 0))
+	b.put_u8(int(clampf(lock, 0, 1) * 255))
+
+
+static func read(b: StreamPeerBuffer) -> DroneState:
+	var d := DroneState.new()
+	d.id = b.get_u16()
+	d.owner = b.get_32()
+	d.kind = b.get_u8()
+	d.pos = Vector3(b.get_float(), b.get_float(), b.get_float())
+	d.vel = Vector3(b.get_half(), b.get_half(), b.get_half())
+	d.rot = Quaternion(b.get_16() / 32767.0, b.get_16() / 32767.0, b.get_16() / 32767.0, b.get_16() / 32767.0).normalized()
+	d.angvel = Vector3(b.get_half(), b.get_half(), b.get_half())
+	d.throttle = b.get_u8() / 255.0
+	d.thrust_frac = b.get_u8() / 127.0
+	d.battery = b.get_u8() / 255.0
+	d.signal_q = b.get_u8() / 255.0
+	d.nolink = b.get_u8() / 50.0
+	var f := b.get_u8()
+	d.control = (f & 1) != 0
+	d.trapped = 1.0 if (f & 2) != 0 else 0.0
+	d.jammed = (f & 4) != 0
+	d.lock = b.get_u8() / 255.0
+	return d
+
+
+## Упаковка для снапшота (читаемая, для отладки).
 func to_array() -> Array:
 	var flags := (1 if control else 0) | (2 if trapped > 0.0 else 0) | (4 if jammed else 0)
 	return [id, owner, kind, pos, vel, rot, angvel, snappedf(throttle, 0.01),

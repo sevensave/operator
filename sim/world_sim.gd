@@ -12,7 +12,7 @@ var players := {}          # pid -> PlayerSim
 var drones := {}           # id -> DroneState
 var sudden_death := false
 var finished := false
-var winner := -1           # pid победителя, -1 — ничья/нет
+var winner := 0            # pid победителя, 0 — ничья/нет (у ботов pid < 0)
 var events: Array = []     # события последнего шага
 
 var _next_drone := 1
@@ -98,7 +98,7 @@ func trigger_trap(pid: int) -> bool:
 func detonate(pid: int) -> void:
 	var d := drone_of(pid)
 	if d != null and d.age > 0.6 and d.trapped <= 0.0:
-		_explode(d, "detonate", -1)
+		_explode(d, "detonate", 0)
 		_check_victory()
 
 
@@ -296,15 +296,15 @@ func _check_collisions(prev: Dictionary) -> void:
 		if dead.has(d.id):
 			continue
 		if d.lock >= 1.0:
-			dead[d.id] = ["turret", -1]
+			dead[d.id] = ["turret", 0]
 			continue
 		var hit := terrain.collide(d.pos, d.radius())
 		if hit != "":
-			dead[d.id] = [hit, -1]
+			dead[d.id] = [hit, 0]
 			continue
 		for p in players.values():
 			if p.pid != d.owner and not p.eliminated and d.pos.distance_to(shelter_center(p)) < SimConst.SHELTER_HIT_RADIUS * 0.6:
-				dead[d.id] = ["shelter", -1]
+				dead[d.id] = ["shelter", 0]
 				break
 	for id in dead.keys():
 		_explode(drones[id], dead[id][0], dead[id][1])
@@ -329,7 +329,7 @@ func _explode(d: DroneState, cause: String, other: int) -> void:
 	owner.drone_id = 0
 	owner.respawn_t = SimConst.RESPAWN_DELAY
 	events.append({"t": "boom", "pid": d.owner, "id": d.id, "pos": d.pos, "kind": d.kind, "cause": cause, "by": other})
-	if cause == "ram" and other >= 0 and players.has(other):
+	if cause == "ram" and players.has(other):
 		owner.rams += 1
 		if d.owner < other:
 			events.append({"t": "ram", "a": d.owner, "b": other})
@@ -354,7 +354,7 @@ func _eliminate(p: PlayerSim) -> void:
 	if p.drone_id != 0 and drones.has(p.drone_id):
 		var d: DroneState = drones[p.drone_id]
 		drones.erase(d.id)
-		events.append({"t": "boom", "pid": p.pid, "id": d.id, "pos": d.pos, "kind": d.kind, "cause": "out", "by": -1})
+		events.append({"t": "boom", "pid": p.pid, "id": d.id, "pos": d.pos, "kind": d.kind, "cause": "out", "by": 0})
 	p.drone_id = 0
 	events.append({"t": "out", "pid": p.pid, "place": p.place})
 
@@ -376,7 +376,7 @@ func _check_victory() -> void:
 			winner = alive[0].pid
 			alive[0].place = 1
 		else:
-			winner = -1
+			winner = 0
 		events.append({"t": "end", "winner": winner})
 
 

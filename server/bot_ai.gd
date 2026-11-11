@@ -7,7 +7,7 @@ var pid := 0
 var skill := 0.7
 var plane_share := 0.35
 var rng := RandomNumberGenerator.new()
-var target_pid := -1
+var target_pid := 0
 var _retarget := 0.0
 var _weave_phase := 0.0
 var _last_drone := 0
@@ -63,7 +63,7 @@ func think(w: WorldSim) -> DroneInput:
 				intercept = true
 				break
 	if not intercept:
-		if target_pid < 0:
+		if target_pid == 0:
 			return _hover(d, w)
 		aim = w.shelter_center(w.players[target_pid])
 
@@ -96,7 +96,7 @@ func think(w: WorldSim) -> DroneInput:
 	if intercept:
 		alt = maxf(aim.y, g + 3.0)
 
-	if not intercept and target_pid >= 0:
+	if not intercept and target_pid != 0:
 		var blast: float = SimConst.BLAST_RADIUS[d.kind]
 		if d.pos.distance_to(aim) < SimConst.SHELTER_HIT_RADIUS + blast * 0.6 and w.players[target_pid].grace <= 0.0:
 			w.detonate(pid)
@@ -158,7 +158,7 @@ func _hover(d: DroneState, w: WorldSim) -> DroneInput:
 
 
 func _pick_target(w: WorldSim, me: PlayerSim) -> void:
-	var best := -1
+	var best := 0
 	var best_score := -INF
 	var home := w.shelter_pos(me)
 	for p in w.players.values():

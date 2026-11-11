@@ -18,7 +18,7 @@ var post_mat: ShaderMaterial
 var drone_views := {}       # id -> DroneView
 var shelter_nodes := {}     # pid -> Node3D
 var jam_domes := {}         # pid -> MeshInstance3D
-var spectate_pid := -1
+var spectate_pid := 0
 var hit_flash := 0.0
 var shake := 0.0
 var menu_open := false
@@ -31,6 +31,8 @@ var _orbit := 0.0
 var _ended := false
 var _last_input := DroneInput.new()
 var _was_flying := false
+var autopilot: BotAI          # отладка: дроном управляет бот (флаг --autopilot)
+var _autopilot_rw: RemoteWorld
 
 
 func setup(p_feed, p_quality: int) -> void:
@@ -178,6 +180,13 @@ func _process(delta: float) -> void:
 		inp = DroneInput.new()
 		inp.seq = controls.seq
 		inp.acro = Settings.acro
+	if autopilot != null:
+		if feed is FeedNet:
+			if _autopilot_rw == null:
+				_autopilot_rw = RemoteWorld.new()
+				_autopilot_rw.client = feed.client
+			_autopilot_rw.sync_from(feed)
+			inp = autopilot.think(_autopilot_rw)
 	_last_input = inp
 	feed.update(delta, inp)
 	var drones: Dictionary = feed.render_drones()
@@ -191,7 +200,7 @@ func _process(delta: float) -> void:
 	if mine != null:
 		_fpv_camera(mine, delta)
 		if not _was_flying:
-			spectate_pid = -1
+			spectate_pid = 0
 	else:
 		_spectate_camera(drones, me, delta)
 	_was_flying = mine != null
@@ -248,7 +257,7 @@ func _next_spectate() -> void:
 		if p.drone_id != 0:
 			ids.append(p.pid)
 	if ids.is_empty():
-		spectate_pid = -1
+		spectate_pid = 0
 		return
 	ids.sort()
 	var i := ids.find(spectate_pid)
@@ -261,13 +270,13 @@ func _spectate_camera(drones: Dictionary, me, delta: float) -> void:
 	var waiting: bool = me != null and not me.eliminated and not feed.finished()
 	var target: DroneState = null
 	if not waiting:
-		if spectate_pid >= 0:
+		if spectate_pid != 0:
 			var sp = feed.players.get(spectate_pid)
 			if sp != null and sp.drone_id != 0:
 				target = drones.get(sp.drone_id)
 		if target == null:
 			_next_spectate()
-			if spectate_pid >= 0:
+			if spectate_pid != 0:
 				var sp2 = feed.players.get(spectate_pid)
 				if sp2 != null and sp2.drone_id != 0:
 					target = drones.get(sp2.drone_id)
@@ -431,7 +440,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 		if w == feed.my_pid:
 			osd.big_text = "ПОБЕДА"
 			osd.big_color = UiTheme.ACCENT
-		elif w >= 0 and feed.players.has(w):
+		elif w != 0 and feed.players.has(w):
 			osd.big_text = "Победил %s" % feed.players[w].name
 			osd.big_color = UiTheme.TEXT
 		else:
@@ -543,6 +552,7 @@ func _toggle_menu() -> void:
 
 func _build_pause_menu() -> Control:
 	var root := ColorRect.new()
+	root.theme = UiTheme.theme()
 	root.color = Color(0, 0, 0, 0.55)
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var box := VBoxContainer.new()
