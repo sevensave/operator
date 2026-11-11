@@ -307,7 +307,9 @@ func _check_collisions(prev: Dictionary) -> void:
 				dead[d.id] = ["shelter", 0]
 				break
 	for id in dead.keys():
-		_explode(drones[id], dead[id][0], dead[id][1])
+		# Дрон мог исчезнуть раньше в этом же цикле: взрыв выбил его владельца.
+		if drones.has(id):
+			_explode(drones[id], dead[id][0], dead[id][1])
 
 
 static func _swept_hit(a0: Vector3, a1: Vector3, b0: Vector3, b1: Vector3, r: float) -> bool:

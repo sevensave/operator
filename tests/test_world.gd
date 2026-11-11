@@ -185,3 +185,16 @@ func test_full_bot_free_match_progresses() -> void:
 	var w := _world(8)
 	_tick(w, 10.0)
 	t.check(w.drones.size() == 8, "у всех 8 игроков есть дрон: %d" % w.drones.size())
+
+
+func test_simultaneous_hit_and_crash_of_eliminated_owner() -> void:
+	# Дрон Б разбивается в тот же тик, когда взрыв А выбивает Б — ошибки быть не должно.
+	var w := _world(3, 1)
+	_tick(w, 1.5)
+	var a := w.drone_of(1)
+	var b := w.drone_of(2)
+	a.pos = w.shelter_center(w.players[2]) + Vector3(0, 1.0, 2.0)
+	b.pos = Vector3(b.pos.x, w.terrain.height_at(b.pos.x, b.pos.z) - 1.0, b.pos.z)
+	w.step({})
+	t.check(w.players[2].eliminated, "Б выбыл")
+	t.check(w.drone_of(2) == null, "дрон Б убран")
