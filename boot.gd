@@ -3,6 +3,7 @@ extends Node
 ##   --server [--port=N]   выделенный сервер (headless)
 ##   --training            сразу тренировка с ботами
 ##   --shot=путь.png --shot-at=сек   сохранить скриншот и выйти (для проверки графики)
+##   --screen=training               сразу открыть экран меню (show_<имя> в ui/app.gd)
 
 var _shot_path := ""
 var _shot_at := 0.0
@@ -28,6 +29,8 @@ func _ready() -> void:
 	add_child(app)
 	if args.has("training"):
 		app.call_deferred("start_training", int(args.get("bots", "5")))
+	elif args.has("screen") and app.has_method("show_" + str(args.screen)):   # для скриншотов экранов меню
+		app.call_deferred("show_" + str(args.screen))
 
 
 func _args() -> Dictionary:

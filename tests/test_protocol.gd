@@ -63,6 +63,31 @@ func test_lobby_flow() -> void:
 	t.check(r.host == 12, "хост перешёл следующему")
 
 
+func test_model_is_clamped_and_reaches_roster() -> void:
+	sent.clear()
+	var r := Room.new("654321", _send)
+	r.slots = 4
+	r.bots = true
+	r.add_member(20, "Сокол")
+	r.add_member(21, "Грач")
+	r.set_loadout(20, 1, 0, 99)
+	r.set_loadout(21, 0, 1, -7)
+	t.check(r.info[20].model == SimConst.MODEL_COUNT - 1 and r.info[21].model == 0, "модель клампится сервером")
+	r.set_ready(21, true)
+	t.check(r.start(20) == "", "матч стартовал")
+	var ms = _last(21, Proto.MATCH_START)
+	t.check(ms != null, "MATCH_START дошёл")
+	if ms == null:
+		return
+	var models := {}
+	for e in ms.roster:
+		models[int(e.pid)] = int(e.get("model", -1))
+	t.check(models.get(20) == 2 and models.get(21) == 0, "модель игроков в ростере: %s" % models)
+	for pid in models:
+		t.check(models[pid] >= 0 and models[pid] < SimConst.MODEL_COUNT, "модель в допустимых пределах (%d)" % pid)
+	t.check(r.world.players[20].model == 2, "модель доходит до PlayerSim")
+
+
 func test_match_runs_to_winner_and_back_to_lobby() -> void:
 	sent.clear()
 	var r := Room.new("654321", _send)

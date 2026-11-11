@@ -78,7 +78,7 @@ func add_member(pid: int, name: String) -> String:
 	if status != "lobby":
 		return "Матч уже идёт — дождитесь конца"
 	members.append(pid)
-	info[pid] = {"name": _unique_name(name), "color": _free_color(), "style": 0, "kind": 0, "ready": false}
+	info[pid] = {"name": _unique_name(name), "color": _free_color(), "style": 0, "model": 0, "kind": 0, "ready": false}
 	if host == 0 or not info.has(host):
 		host = pid
 	system_chat("%s заходит в лобби" % info[pid].name)
@@ -126,7 +126,7 @@ func state_for(_pid: int) -> Dictionary:
 	var list := []
 	for pid in members:
 		var i: Dictionary = info[pid]
-		list.append({"pid": pid, "name": i.name, "color": i.color, "style": i.style, "kind": i.kind, "ready": i.ready})
+		list.append({"pid": pid, "name": i.name, "color": i.color, "style": i.style, "model": i.model, "kind": i.kind, "ready": i.ready})
 	return {"code": code, "title": title, "public": public, "slots": slots, "lives": lives, "bots": bots,
 		"host": host, "players": list, "status": status, "results": results, "chat": chat}
 
@@ -142,9 +142,10 @@ func set_ready(pid: int, r: bool) -> void:
 		broadcast_state()
 
 
-func set_loadout(pid: int, style: int, kind: int) -> void:
+func set_loadout(pid: int, style: int, kind: int, model := 0) -> void:
 	if info.has(pid):
 		info[pid].style = clampi(style, 0, SimConst.SHELTER_STYLES.size() - 1)
+		info[pid].model = clampi(model, 0, SimConst.MODEL_COUNT - 1)
 		info[pid].kind = clampi(kind, 0, 1)
 		if status == "match" and world != null:
 			world.set_kind(pid, info[pid].kind)
@@ -198,7 +199,7 @@ func start(by: int) -> String:
 	var roster := []
 	for pid in members:
 		var i: Dictionary = info[pid]
-		roster.append({"pid": pid, "name": i.name, "color": i.color, "style": i.style, "kind": i.kind, "bot": false})
+		roster.append({"pid": pid, "name": i.name, "color": i.color, "style": i.style, "model": i.model, "kind": i.kind, "bot": false})
 	bot_ai.clear()
 	var used_colors := {}
 	for r in roster:
@@ -218,7 +219,7 @@ func start(by: int) -> String:
 		var bpid := _bot_pid
 		_bot_pid -= 1
 		roster.append({"pid": bpid, "name": free_names[bi % free_names.size()] + " (бот)", "color": c,
-			"style": rng.randi() % 4, "kind": rng.randi() % 2, "bot": true})
+			"style": rng.randi() % 4, "model": rng.randi() % SimConst.MODEL_COUNT, "kind": rng.randi() % 2, "bot": true})
 		bot_ai[bpid] = BotAI.new(bpid, rng.randf_range(0.45, 0.85), rng.randi())
 		bi += 1
 	world = WorldSim.new()

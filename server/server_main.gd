@@ -154,7 +154,7 @@ func _on_packet(id: int, data: PackedByteArray) -> void:
 		Proto.LOADOUT:
 			if room:
 				var d := Proto.dict(p)
-				room.set_loadout(id, int(d.get("style", 0)), int(d.get("kind", 0)))
+				room.set_loadout(id, int(d.get("style", 0)), int(d.get("kind", 0)), int(d.get("model", 0)))
 		Proto.CHAT:
 			if room:
 				var now := Time.get_ticks_msec() / 1000.0

@@ -12,6 +12,7 @@ var _retarget := 0.0
 var _weave_phase := 0.0
 var _last_drone := 0
 var _intercept_id := 0
+var keep_kind := false   # не менять тип дрона между вылетами (съёмка с --kind)
 
 
 func _init(p_pid: int, p_skill: float, p_seed: int) -> void:
@@ -38,7 +39,7 @@ func think(w: WorldSim) -> DroneInput:
 	var d: DroneState = w.drone_of(pid)
 	if d == null:
 		# Решаем, что запустить следующим.
-		if me.respawn_t > 0.0 and me.respawn_t < 0.2:
+		if me.respawn_t > 0.0 and me.respawn_t < 0.2 and not keep_kind:
 			w.set_kind(pid, SimConst.Kind.PLANE if rng.randf() < plane_share else SimConst.Kind.COPTER)
 		return inp
 	if d.id != _last_drone:

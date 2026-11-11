@@ -178,6 +178,14 @@ func _row(box: Container, label: String, ctrl: Control) -> void:
 	box.add_child(h)
 
 
+## «Квадро X / Классика» — один выбор задаёт вид и коптера, и самолёта.
+static func model_names() -> Array:
+	var out := []
+	for i in SimConst.MODEL_COUNT:
+		out.append("%s / %s" % [SimConst.MODEL_NAMES[0][i], SimConst.MODEL_NAMES[1][i]])
+	return out
+
+
 func _options(items: Array, selected: int) -> OptionButton:
 	var o := OptionButton.new()
 	for it in items:
@@ -476,13 +484,21 @@ func show_lobby() -> void:
 	bottom.add_child(UiTheme.label("Дрон", 18))
 	var kind := _options(SimConst.KIND_NAMES, Settings.last_kind)
 	bottom.add_child(kind)
+	bottom.add_child(UiTheme.label("Модель", 18))
+	var model := _options(model_names(), Settings.last_model)
+	bottom.add_child(model)
+	var preview := DronePreview.new(Vector2i(170, 96))
+	bottom.add_child(preview)
 	var send_loadout := func(_i = 0):
 		Settings.last_style = style.selected
 		Settings.last_kind = kind.selected
+		Settings.last_model = model.selected
 		Settings.save()
-		net.send(Proto.LOADOUT, {"style": style.selected, "kind": kind.selected})
+		preview.set_drone(kind.selected, model.selected, SimConst.PLAYER_COLORS[0])
+		net.send(Proto.LOADOUT, {"style": style.selected, "kind": kind.selected, "model": model.selected})
 	style.item_selected.connect(send_loadout)
 	kind.item_selected.connect(send_loadout)
+	model.item_selected.connect(send_loadout)
 	var ready := Button.new()
 	ready.toggle_mode = true
 	ready.text = "Готов"
@@ -528,7 +544,9 @@ func _fill_lobby(st: Dictionary) -> void:
 		nm.custom_minimum_size.x = 250
 		nm.clip_text = true
 		h.add_child(nm)
-		h.add_child(UiTheme.label("%s · %s" % [SimConst.SHELTER_STYLES[int(p.style) % 4], SimConst.KIND_NAMES[int(p.kind) % 2]], 17, UiTheme.DIM))
+		var mdl := clampi(int(p.get("model", 0)), 0, SimConst.MODEL_COUNT - 1)
+		h.add_child(UiTheme.label("%s · %s «%s»" % [SimConst.SHELTER_STYLES[int(p.style) % 4], SimConst.KIND_NAMES[int(p.kind) % 2],
+			SimConst.MODEL_NAMES[int(p.kind) % 2][mdl]], 17, UiTheme.DIM))
 		var sp := Control.new()
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(sp)
@@ -666,9 +684,18 @@ func show_training() -> void:
 	_row(box, "Первый дрон", kind)
 	var style := _options(SimConst.SHELTER_STYLES, Settings.last_style)
 	_row(box, "Укрытие", style)
+	var model := _options(model_names(), Settings.last_model)
+	_row(box, "Модель дрона", model)
+	var preview := DronePreview.new(Vector2i(480, 200))
+	box.add_child(preview)
+	var upd := func(_i = 0): preview.set_drone(kind.selected, model.selected, SimConst.PLAYER_COLORS[0])
+	kind.item_selected.connect(upd)
+	model.item_selected.connect(upd)
+	upd.call()
 	var h := HBoxContainer.new()
 	h.add_child(UiTheme.button("Начать", func():
 		Settings.last_kind = kind.selected
+		Settings.last_model = model.selected
 		Settings.last_style = style.selected
 		Settings.save()
 		start_training(bots.selected + 1, lives.selected + 1), 220))
@@ -678,16 +705,25 @@ func show_training() -> void:
 
 func start_training(bots: int, lives := 3) -> void:
 	var name := Settings.player_name if Settings.player_name != "" else "Оператор"
-	var roster := [{"pid": 1, "name": name, "color": 0, "style": Settings.last_style, "kind": Settings.last_kind}]
+	var args := OS.get_cmdline_user_args()
+	var my_kind := Settings.last_kind
+	var my_model := Settings.last_model
+	for a in args:   # для съёмки: --kind=0|1, --model=0..2
+		if a.begins_with("--kind="):
+			my_kind = clampi(a.substr(7).to_int(), 0, 1)
+		elif a.begins_with("--model="):
+			my_model = clampi(a.substr(8).to_int(), 0, SimConst.MODEL_COUNT - 1)
+	var roster := [{"pid": 1, "name": name, "color": 0, "style": Settings.last_style, "kind": my_kind, "model": my_model}]
 	var names := Room.BOT_NAMES
 	for i in bots:
-		roster.append({"pid": i + 2, "name": names[i % names.size()], "color": i + 1, "style": (i + 1) % 4, "kind": i % 2, "bot": true})
+		roster.append({"pid": i + 2, "name": names[i % names.size()], "color": i + 1, "style": (i + 1) % 4,
+			"kind": i % 2, "model": (i + 1) % SimConst.MODEL_COUNT, "bot": true})
 	_leave_match_view()
 	var f := FeedLocal.new()
-	var args := OS.get_cmdline_user_args()
 	f.start(_training_seed(args), roster, lives, 1)
 	if args.has("--autopilot"):
 		f.autopilot = BotAI.new(1, 0.9, 77)
+		f.autopilot.keep_kind = Array(args).any(func(a): return a.begins_with("--kind="))
 	feed = f
 	_start_view()
 

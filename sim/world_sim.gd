@@ -35,6 +35,7 @@ func setup(p_seed: int, roster: Array, lives: int) -> void:
 		p.name = str(r.get("name", "Оператор"))
 		p.color = int(r.get("color", i))
 		p.style = int(r.get("style", 0))
+		p.model = clampi(int(r.get("model", 0)), 0, SimConst.MODEL_COUNT - 1)
 		p.kind = int(r.get("kind", 0))
 		p.bot = bool(r.get("bot", false))
 		p.shelter = order[i]

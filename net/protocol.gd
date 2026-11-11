@@ -10,7 +10,7 @@ enum {
 	JOIN,           # {code}
 	LEAVE,          # {}
 	READY,          # {ready}
-	LOADOUT,        # {style, kind}
+	LOADOUT,        # {style, kind, model}
 	CHAT,           # {text}
 	START,          # {}
 	KICK,           # {pid}

@@ -38,7 +38,7 @@ static func atmosphere(daytime: int) -> Dictionary:
 			return {"elev": 28.0, "sun": Color(0.96, 0.93, 0.86), "energy": 0.75, "top": Color(0.62, 0.65, 0.68),
 				"horizon": Color(0.78, 0.79, 0.80), "fog": Color(0.74, 0.76, 0.77), "density": 0.0042,
 				"ambient": Color(0.70, 0.72, 0.74), "amb_energy": 0.8, "sky_amb": 0.8, "exposure": 1.0,
-				"clouds": 0.7, "cloud": Color(0.88, 0.89, 0.90), "cloud_shade": Color(0.62, 0.64, 0.66), "vol": 0.012, "disk": 0.3}
+				"clouds": 0.7, "cloud": Color(0.88, 0.89, 0.90), "cloud_shade": Color(0.62, 0.64, 0.66), "vol": 0.008, "disk": 0.3}
 		MapPreset.Daytime.NIGHT:
 			return {"elev": 38.0, "sun": Color(0.55, 0.66, 1.0), "energy": 0.5, "top": Color(0.02, 0.03, 0.08),
 				"horizon": Color(0.10, 0.13, 0.22), "fog": Color(0.10, 0.12, 0.19), "density": 0.0011,
@@ -123,6 +123,7 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 		env.volumetric_fog_albedo = (at.fog as Color).lightened(0.2)
 		env.volumetric_fog_length = 220.0
 		env.volumetric_fog_anisotropy = 0.6
+		env.volumetric_fog_ambient_inject = 0.7   # туман подсвечен небом, а не только солнцем — не темнеет
 		env.ssao_enabled = true
 		env.ssao_radius = 1.5
 		env.ssil_enabled = true
@@ -439,12 +440,22 @@ static func _ruins(terrain: Terrain, root: Node3D) -> void:
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.95
-	mi.material_override = mat
+	mi.material_override = structure_material()
 	mi.name = "Ruins"
 	root.add_child(mi)
+
+
+const STRUCTURE_SHADER := preload("res://shaders/structure.gdshader")
+static var _structure_mat: ShaderMaterial
+
+
+## Общий материал построек: вершинный цвет + процедурная фактура.
+static func structure_material() -> ShaderMaterial:
+	if _structure_mat == null:
+		_structure_mat = ShaderMaterial.new()
+		_structure_mat.shader = STRUCTURE_SHADER
+		_structure_mat.set_shader_parameter("noise_tex", _noise_tex(0.03))
+	return _structure_mat
 
 
 static func _box(st: SurfaceTool, b: AABB, c: Color) -> void:

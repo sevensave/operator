@@ -35,6 +35,8 @@ var autopilot: BotAI          # отладка: дроном управляет 
 var _autopilot_rw: RemoteWorld
 var _precip: GPUParticles3D      # дождь/снег вокруг камеры (косметика пресета)
 var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры для арта: вид сзади
+## Кадры для арта: при --chase/--cinematic убрать FPV-эффекты (линза, зерно, сканлайны).
+var _clean := OS.get_cmdline_user_args().has("--clean") and (_chase_mode or OS.get_cmdline_user_args().has("--cinematic"))
 
 
 func setup(p_feed, p_quality: int) -> void:
@@ -247,13 +249,13 @@ func _sync_drones(drones: Dictionary, delta: float) -> void:
 			v = DroneView.new()
 			var p = feed.players.get(d.owner)
 			var col: Color = SimConst.PLAYER_COLORS[(p.color if p else 0) % SimConst.PLAYER_COLORS.size()]
-			v.setup(d.kind, col, id != my_id)
+			v.setup(d.kind, col, id != my_id, p.model if p else 0)
 			add_child(v)
 			drone_views[id] = v
 		v.global_position = d.pos
 		v.quaternion = d.rot
 		v.visible = id != my_id or _chase_mode
-		v.update_visual(d.thrust_frac, delta)
+		v.update_state(d, delta)
 
 
 func _fpv_camera(d: DroneState, delta: float) -> void:
@@ -272,9 +274,10 @@ func _fpv_camera(d: DroneState, delta: float) -> void:
 func _chase_camera(d: DroneState, delta: float) -> void:
 	cam.fov = 70.0
 	var back := -d.vel.normalized() if d.vel.length() > 2.0 else -d.forward()
-	var want := d.pos + back * 7.0 + Vector3(0, 2.2, 0)
+	var dist := (3.2 if d.kind == SimConst.Kind.COPTER else 5.5) if _clean else 7.0   # для съёмки моделей — ближе
+	var want := d.pos + back * dist + Vector3(0, 1.2 if _clean else 2.2, 0)
 	want.y = maxf(want.y, feed.terrain.height_at(want.x, want.z) + 1.5)
-	_chase_pos = want if _chase_pos == Vector3.ZERO else _chase_pos.lerp(want, clampf(delta * 5.0, 0.0, 1.0))
+	_chase_pos = want if _chase_pos == Vector3.ZERO else _chase_pos.lerp(want, clampf(delta * (12.0 if _clean else 5.0), 0.0, 1.0))
 	cam.global_position = _chase_pos
 	cam.look_at(d.pos + d.vel * 0.6 + Vector3(0, 0.5, 0), Vector3.UP)
 
@@ -333,7 +336,25 @@ func _spectate_camera(drones: Dictionary, me, delta: float) -> void:
 		cam.look_at(look, Vector3.UP)
 
 
+## Выбывшее укрытие: осевшие, закопчённые постройки и столб дыма до конца матча.
+func _ruin_shelter(n: Node3D) -> void:
+	if n.has_meta("ruined"):
+		return
+	n.set_meta("ruined", true)
+	var body := n.get_node_or_null("Body") as GeometryInstance3D
+	if body != null:
+		body.scale = Vector3(1.05, 0.55, 1.05)
+		body.rotation = Vector3(0.06, 0.0, -0.05)
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.albedo_color = Color(0.32, 0.30, 0.28)
+		m.roughness = 1.0
+		body.material_override = m
+	Fx.smoke_column(n, Vector3(0, 2.0, 0), quality)
+
+
 func _update_post(d: DroneState) -> void:
+	post.visible = not _clean
 	if d != null:
 		var nl := clampf(d.nolink / SimConst.NOLINK_FALL, 0.0, 1.0)
 		if not d.control and d.trapped <= 0.0:
@@ -539,6 +560,7 @@ func _on_event(ev: Dictionary) -> void:
 			if n2:
 				n2.get_node("Beacon").visible = false
 				n2.get_node("BeaconLight").visible = false
+				_ruin_shelter(n2)
 		"ram":
 			osd.push_line("Таран: %s и %s" % [_name(ev.a), _name(ev.b)], UiTheme.TEXT)
 		"caught":

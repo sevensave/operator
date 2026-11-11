@@ -54,10 +54,8 @@ static func build(style: int, color: Color, name: String, seed: int) -> Node3D:
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.9
-	mi.material_override = mat
+	mi.material_override = WorldBuilder.structure_material()
+	mi.name = "Body"
 	root.add_child(mi)
 
 	# Мигающий огонь на мачте.

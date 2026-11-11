@@ -17,6 +17,7 @@ var server_host := ""       # пусто — адрес по умолчанию 
 var server_port := 0
 var last_kind := 0
 var last_style := 0
+var last_model := 0
 var show_fps := false
 
 
@@ -32,6 +33,7 @@ func load_settings() -> void:
 	player_name = str(c.get_value("player", "name", player_name))
 	last_kind = int(c.get_value("player", "kind", last_kind))
 	last_style = int(c.get_value("player", "style", last_style))
+	last_model = clampi(int(c.get_value("player", "model", last_model)), 0, SimConst.MODEL_COUNT - 1)
 	quality = int(c.get_value("video", "quality", quality))
 	fullscreen = bool(c.get_value("video", "fullscreen", fullscreen))
 	vsync = bool(c.get_value("video", "vsync", vsync))
@@ -51,6 +53,7 @@ func save() -> void:
 	c.set_value("player", "name", player_name)
 	c.set_value("player", "kind", last_kind)
 	c.set_value("player", "style", last_style)
+	c.set_value("player", "model", last_model)
 	c.set_value("video", "quality", quality)
 	c.set_value("video", "fullscreen", fullscreen)
 	c.set_value("video", "vsync", vsync)

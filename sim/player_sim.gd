@@ -7,6 +7,7 @@ var name := ""
 var color := 0
 var shelter := 0
 var style := 0
+var model := 0     # вариант внешнего вида дрона (0..MODEL_COUNT-1), в снапшот не идёт
 var kind := SimConst.Kind.COPTER   # какой дрон запускать следующим
 var bot := false
 
@@ -98,4 +99,4 @@ func copy_net(o: PlayerSim) -> void:
 
 
 func info() -> Dictionary:
-	return {"pid": pid, "name": name, "color": color, "shelter": shelter, "style": style, "kind": kind, "bot": bot}
+	return {"pid": pid, "name": name, "color": color, "shelter": shelter, "style": style, "model": model, "kind": kind, "bot": bot}
