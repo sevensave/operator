@@ -1,9 +1,9 @@
 class_name FlightCopter
-## Квадрокоптер: висит, резко маневрирует, скорость до ~28 м/с (с форсажем быстрее).
+## Квадрокоптер: висит, резко маневрирует, скорость до ~33 м/с (с форсажем быстрее).
 ## Режим «аркада» — ручки задают угол наклона и вертикальную скорость (автовыравнивание),
 ## «акро» — ручки задают угловые скорости, газ — абсолютная тяга.
 
-const MAX_TILT := deg_to_rad(40.0)
+const MAX_TILT := deg_to_rad(45.0)
 const MAX_TILT_BOOST := deg_to_rad(52.0)
 const TILT_RESPONSE := 8.0
 const YAW_RATE := 2.4
@@ -14,12 +14,12 @@ const BOOST_THRUST := 3.3 * SimConst.GRAVITY
 const CLIMB_SPEED := 10.0    # аркада: газ +1 — подъём 10 м/с
 const DESCENT_SPEED := 22.0  # аркада: газ −1 — снижение до 22 м/с (не быстрее свободного падения)
 const CLIMB_DAMP := 1.2
-const BRAKE_DAMP := 2.0      # торможение снижения/разгон вверх резче, чтобы после пике не «проваливаться»
+const BRAKE_DAMP := 3.0      # торможение снижения/разгон вверх резче, чтобы после пике не «проваливаться»
 const DIVE_EXTRA_TILT := deg_to_rad(32.0)  # газ вниз + ручка от себя — нос опускается глубже
 const DIVE_THRUST_K := 0.55   # нижний предел тяги ∝ наклону: в пике винты продолжают тянуть вперёд
 const DRAG_LIN := 0.05
-const DRAG_QUAD := 0.0118
-const DRAIN_HOVER := 1.0 / 160.0 # ~2,7 мин висения на одном заряде
+const DRAG_QUAD := 0.0075
+const DRAIN_HOVER := 1.0 / 220.0 # ~3,7 мин висения на одном заряде
 
 
 static func step(s: DroneState, inp: DroneInput, dt: float, air: Vector3) -> void:

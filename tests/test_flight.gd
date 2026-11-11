@@ -42,12 +42,13 @@ func test_copter_top_speed() -> void:
 	inp.pitch = 1.0
 	_run(d, inp, 15.0)
 	var hs := Vector2(d.vel.x, d.vel.z).length()
-	t.check(hs > 22.0 and hs < 32.0, "скорость коптера ~28 м/с, получили %.1f" % hs)
+	t.check(hs > 30.0 and hs < 36.0, "скорость коптера ~33 м/с, получили %.1f" % hs)
 	t.check(d.vel.z < 0.0, "летит вперёд (−Z)")
 	inp.boost = true
 	_run(d, inp, 10.0)
 	var hs2 := Vector2(d.vel.x, d.vel.z).length()
 	t.check(hs2 > hs + 3.0, "форсаж быстрее: %.1f > %.1f" % [hs2, hs])
+	t.check(hs2 > 35.0 and hs2 < 40.0, "форсаж ~37 м/с: %.1f" % hs2)
 
 
 func test_copter_climb_and_turn() -> void:
@@ -131,6 +132,24 @@ func test_copter_battery_drains_faster_with_boost() -> void:
 	t.check(a.battery > 0.8, "20 с полёта не съедают батарею: %.3f" % a.battery)
 
 
+func test_copter_hover_battery_life() -> void:
+	var d := _copter()
+	_run(d, DroneInput.new(), 60.0)
+	var full := 60.0 / (1.0 - d.battery)
+	t.check(full > 200.0 and full < 240.0, "висение на одном заряде ~220 с: %.0f с" % full)
+
+
+func test_copter_dive_recovery_is_short() -> void:
+	var d := _copter(300.0)
+	var inp := DroneInput.new()
+	inp.throttle = -1.0
+	_run(d, inp, 3.0)
+	var y0 := d.pos.y
+	_run(d, DroneInput.new(), 1.5)
+	t.check(y0 - d.pos.y < 10.0, "после пике газ отпущен — провал меньше 10 м: %.1f" % (y0 - d.pos.y))
+	t.check(absf(d.vel.y) < 0.8, "за 1,5 с снижение погашено: %.2f м/с" % d.vel.y)
+
+
 func test_copter_acro_rates() -> void:
 	var d := _copter()
 	var inp := DroneInput.new()
@@ -168,6 +187,38 @@ func test_plane_cannot_hover_and_stalls() -> void:
 	_run(d, inp, 8.0)
 	t.check(d.pos.y < 200.0, "на малом газу и задранном носе самолёт теряет высоту: %.1f" % d.pos.y)
 	t.check(d.vel.length() > 8.0, "самолёт не зависает: %.1f" % d.vel.length())
+
+
+func test_plane_battery_life() -> void:
+	var d := _plane(45.0)
+	var inp := DroneInput.new()
+	inp.throttle = 1.0
+	d.throttle = 1.0
+	_run(d, inp, 60.0)
+	var full := 60.0 / (1.0 - d.battery)
+	t.check(full > 260.0 and full < 300.0, "самолёт на полном газу ~280 с: %.0f с" % full)
+
+
+func test_plane_half_turn_takes_time() -> void:
+	var p := _plane(45.0)
+	p.throttle = 1.0
+	var inp := DroneInput.new()
+	inp.throttle = 1.0
+	inp.roll = 1.0
+	_run(p, inp, 0.5)
+	inp.roll = 0.0
+	inp.pitch = -1.0
+	var turned := 0.0
+	var prev := Vector2(p.vel.x, p.vel.z)
+	var ticks := 0
+	while turned < PI and ticks < 300:
+		_run(p, inp, SimConst.DT)
+		var cur := Vector2(p.vel.x, p.vel.z)
+		turned += absf(prev.angle_to(cur))
+		prev = cur
+		ticks += 1
+	var secs := ticks * SimConst.DT
+	t.check(secs > 2.35 and secs < 4.0, "разворот самолёта на 180° — широкий вираж (было 2,2 с): %.2f с" % secs)
 
 
 func test_plane_turns_wider_than_copter() -> void:

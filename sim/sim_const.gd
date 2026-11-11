@@ -13,9 +13,9 @@ const MAX_PLAYERS := 8
 enum Kind { COPTER = 0, PLANE = 1 }
 
 const DRONE_RADIUS := [0.45, 0.9]       # радиус столкновения по типу
-const BLAST_RADIUS := [7.0, 13.0]       # радиус поражения при взрыве
+const BLAST_RADIUS := [9.0, 11.0]       # радиус поражения при взрыве
 const INTERCEPT_RADIUS := 2.5           # неконтактный взрыватель: чужой дрон ближе — взрываются оба
-const INTERCEPT_BLAST := [6.0, 9.0]     # взрыв дрона сбивает чужие дроны в этом радиусе
+const INTERCEPT_BLAST := [7.0, 7.0]     # взрыв дрона сбивает чужие дроны в этом радиусе
 const SIGNAL_RANGE := [1000.0, 1450.0]   # дальность связи
 
 const SHELTER_HIT_RADIUS := 9.0  # «хитбокс» укрытия, одинаковый для всех видов

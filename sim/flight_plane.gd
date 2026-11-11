@@ -3,7 +3,7 @@ class_name FlightPlane
 ## Подъёмная сила зависит от угла атаки, поэтому разворот идёт креном и тангажом.
 ## «Аркада» сама выравнивает крен и слегка держит горизонт, когда ручки отпущены.
 
-const PITCH_RATE := 1.15
+const PITCH_RATE := 1.0
 const ROLL_RATE := 3.0
 const YAW_RATE := 0.45
 const RATE_RESPONSE := 7.0
@@ -15,7 +15,7 @@ const ALPHA_STALL := 0.27
 const LIFT_K := 0.0448
 const MAX_LIFT := 5.0 * SimConst.GRAVITY
 const SIDE_DAMP := 0.8
-const DRAIN := 1.0 / 330.0
+const DRAIN := 1.0 / 280.0
 
 
 static func step(s: DroneState, inp: DroneInput, dt: float, air: Vector3) -> void:
