@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег, который пересобрать (например v0.1.0)'
+        required: true
+      source_ref:
+        description: 'Коммит или ветка, из которой собирать (по умолчанию main)'
+        required: false
+        default: main
+
+permissions:
+  contents: write
+
+jobs:
+  # Черновик заводим один раз до сборки, чтобы не плодить дубли релиза.
+  draft:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || inputs.tag || github.ref }}
+      - name: Проверить соответствие версии тегу
+        run: |
+          VER=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "тег должен быть vX.Y.Z"; exit 1; }
+          test "$VER" = "${TAG#v}" || { echo "project.godot ($VER) не совпадает с тегом ($TAG)"; exit 1; }
+          grep -q "config/version=\"$VER\"" project.godot
+          grep -q "GAME_VERSION := \"$VER\"" net/config.gd || { echo "net/config.gd: GAME_VERSION не совпадает"; exit 1; }
+          ! grep -q 'DEFAULT_HOST := "127.0.0.1"' net/config.gd || { echo "net/config.gd: не задан адрес боевого сервера"; exit 1; }
+      # Заметки обязательны: без раздела версии в CHANGELOG.md релиз не выйдет.
+      - name: Заметки к релизу
+        run: ./tools/release_notes.sh "$TAG" > "$RUNNER_TEMP/notes.md" && cat "$RUNNER_TEMP/notes.md"
+      - name: Черновик релиза
+        run: gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "Оператор $TAG" --notes-file "$RUNNER_TEMP/notes.md"
+
+  windows:
+    needs: draft
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || inputs.tag || github.ref }}
+      - name: Godot и шаблоны экспорта
+        run: ./tools/ci_install_godot.sh --templates
+      - name: Тесты
+        run: ./tools/test.sh
+      - name: Сборка zip для лаунчера
+        run: ./tools/build_win.sh
+      - name: Проверка архива и запуска
+        shell: pwsh
+        run: |
+          $ver = $env:TAG.TrimStart('v')
+          $zip = "dist/Operator-$ver-win-x64.zip"
+          if (-not (Test-Path $zip)) { throw "нет $zip" }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip)).Entries | ForEach-Object { $_.FullName }
+          if ($names -notcontains 'Operator.exe') { throw "Operator.exe не в корне архива: $names" }
+          $p = Start-Process build/win/Operator.exe -ArgumentList '--headless','--quit-after','90','--','--server','--port=27999' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "exe не стартует: $($p.ExitCode)" }
+      - name: Загрузить в релиз
+        run: gh release upload "$TAG" dist/Operator-*-win-x64.zip --clobber
+
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Опубликовать релиз
+        run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest

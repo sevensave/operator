@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Godot
+        run: ./tools/ci_install_godot.sh
+      - name: Тесты симулятора, протокола и комнат
+        run: ./tools/test.sh
+      - name: Смоук-матч по сети (сервер + 2 клиента + 6 ботов)
+        run: LIVES=1 ./tools/smoke_bots.sh
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Godot и шаблоны экспорта
+        run: ./tools/ci_install_godot.sh --templates
+      - name: Сборка zip для лаунчера
+        run: ./tools/build_win.sh
+      - name: В корне архива Operator.exe
+        run: |
+          VER=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot)
+          7z l "dist/Operator-$VER-win-x64.zip" | tee list.txt
+          grep -E " Operator\.exe$" list.txt
+          ! grep -E "/Operator\.exe$" list.txt
+      - name: Exe стартует (сервер и клиент без окна) и выходит сам
+        shell: pwsh
+        run: |
+          $p = Start-Process build/win/Operator.exe -ArgumentList '--headless','--quit-after','90','--','--server','--port=27999' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "сервер: код $($p.ExitCode)" }
+          $env:SEVENSAVE_LAUNCHER = '1'
+          $p = Start-Process build/win/Operator.exe -ArgumentList '--headless','--quit-after','300','--','--client','--training' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "клиент: код $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: operator-win-x64
+          path: dist/*.zip

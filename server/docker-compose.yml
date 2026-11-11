@@ -1,0 +1,12 @@
+services:
+  operator:
+    build: .
+    image: operator-server
+    restart: unless-stopped
+    environment:
+      - OPERATOR_PORT=${OPERATOR_PORT:-27630}
+    ports:
+      - "${OPERATOR_PORT:-27630}:${OPERATOR_PORT:-27630}/udp"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
