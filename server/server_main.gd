@@ -99,7 +99,9 @@ func _on_packet(id: int, data: PackedByteArray) -> void:
 	match type:
 		Proto.HELLO:
 			var d := Proto.dict(p)
-			if int(d.get("ver", 0)) != NetConfig.PROTOCOL_VERSION:
+			# Симуляция общая: клиент другой версии игры рассинхронится, даже если протокол тот же.
+			if int(d.get("ver", 0)) != NetConfig.PROTOCOL_VERSION \
+					or Proto.clean_text(d.get("game", ""), 16) != NetConfig.GAME_VERSION:
 				_error(id, "Версия игры не совпадает с сервером — обновите игру в лаунчере")
 				return
 			var n := _clean_name(d.get("name", ""))
