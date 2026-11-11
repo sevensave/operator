@@ -20,27 +20,26 @@ func _init(p_size := Vector2i(300, 170)) -> void:
 	add_child(_vp)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.17, 0.19, 0.20)
+	env.background_color = Color(0.13, 0.155, 0.175)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.58, 0.62)
-	env.ambient_light_energy = 1.3
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.ambient_light_color = Color(0.62, 0.68, 0.76)
+	env.ambient_light_energy = 0.9
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-40, -30, 0)
-	sun.light_energy = 2.4
-	_vp.add_child(sun)
-	var rim := DirectionalLight3D.new()
-	rim.rotation_degrees = Vector3(-15, 150, 0)
-	rim.light_energy = 0.6
-	rim.light_color = Color(0.7, 0.8, 1.0)
-	_vp.add_child(rim)
+	# Трёхточечный свет: тёплый рисующий, холодный заполняющий, контровой сзади.
+	for l: Array in [[Vector3(-42, -35, 0), 2.6, Color(1.0, 0.96, 0.9)], [Vector3(-12, 70, 0), 0.9, Color(0.75, 0.85, 1.0)],
+			[Vector3(-25, 165, 0), 1.6, Color(0.85, 0.92, 1.0)], [Vector3(60, 20, 0), 0.35, Color(0.9, 0.9, 1.0)]]:
+		var sun := DirectionalLight3D.new()
+		sun.rotation_degrees = l[0]
+		sun.light_energy = l[1]
+		sun.light_color = l[2]
+		_vp.add_child(sun)
 	_pivot = Node3D.new()
 	_vp.add_child(_pivot)
 	_cam = Camera3D.new()
-	_cam.fov = 40.0
+	_cam.fov = 32.0
 	_vp.add_child(_cam)
 
 
@@ -50,9 +49,18 @@ func set_drone(kind: int, model: int, color: Color) -> void:
 	_view = DroneView.new()
 	_view.setup(kind, color, false, model)
 	_pivot.add_child(_view)
-	var d := 1.25 if kind == SimConst.Kind.COPTER else 4.6
-	_cam.position = Vector3(0, d * 0.42, d)
-	_cam.look_at(Vector3(0, 0.0, 0), Vector3.UP)
+	# Камера отъезжает так, чтобы модель с винтами помещалась в кадр при любом повороте.
+	var info := DroneModels.build(kind, model)
+	var reach := 0.0
+	for p in info.props:
+		reach = maxf(reach, Vector2(p.pos.x, p.pos.z).length() + (p.radius if int(p.axis) == 0 else 0.0))
+	var aabb: AABB = info.mesh.get_aabb()
+	reach = maxf(reach, maxf(aabb.size.x, aabb.size.z) * 0.5) * float(info.scale)
+	if kind == SimConst.Kind.COPTER:
+		reach *= 1.12   # защита винтов и лучи по диагонали шире габарита по осям
+	var aspect := float(_vp.size.x) / maxf(_vp.size.y, 1.0)
+	var d := reach * 1.04 / tan(deg_to_rad(_cam.fov * 0.5)) / minf(aspect, 2.1)
+	_cam.look_at_from_position(Vector3(0, d * 0.36, d * 0.93), Vector3(0, -reach * 0.06, 0), Vector3.UP)
 
 
 func _process(delta: float) -> void:

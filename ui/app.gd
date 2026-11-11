@@ -134,7 +134,7 @@ func _show_backdrop(on: bool) -> void:
 
 # ---------- Каркас экранов ----------
 
-func _screen(name: String, width := 560) -> VBoxContainer:
+func _root(name: String, shade := 0.5) -> Control:
 	if ui:
 		ui.queue_free()
 	_lobby = {}
@@ -142,10 +142,19 @@ func _screen(name: String, width := 560) -> VBoxContainer:
 	root.name = name
 	root.theme = UiTheme.theme()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0.03, 0.04, 0.04, 0.55)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(shade)
+	if shade > 0.0:
+		var dim := ColorRect.new()
+		dim.color = Color(0.015, 0.025, 0.035, shade)
+		dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+		dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(dim)
+	ui_layer.add_child(root)
+	ui = root
+	return root
+
+
+func _screen(name: String, width := 560) -> VBoxContainer:
+	var root := _root(name)
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(center)
@@ -155,26 +164,38 @@ func _screen(name: String, width := 560) -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
-	ui_layer.add_child(root)
-	ui = root
 	return box
 
 
-func _title(box: VBoxContainer, text: String, sub := "") -> void:
-	box.add_child(UiTheme.label(text, 34, UiTheme.ACCENT))
+func _title(box: VBoxContainer, text: String, sub := "", kicker := "Оператор") -> void:
+	box.add_child(UiTheme.kicker(kicker, UiTheme.ACCENT))
+	box.add_child(UiTheme.heading(text, 36))
 	if sub != "":
 		var l := UiTheme.label(sub, 17, UiTheme.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(l)
+	box.add_child(HSeparator.new())
 
 
-func _row(box: Container, label: String, ctrl: Control) -> void:
+func _row(box: Container, label: String, ctrl: Control, label_w := 230) -> void:
 	var h := HBoxContainer.new()
-	var l := UiTheme.label(label, 19)
-	l.custom_minimum_size.x = 220
+	var l := UiTheme.label(label, 18, UiTheme.DIM)
+	l.custom_minimum_size.x = label_w
 	h.add_child(l)
 	ctrl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(ctrl)
+	box.add_child(h)
+
+
+## Нижний ряд кнопок экрана: главное действие слева, остальные следом.
+func _actions(box: Container, buttons: Array) -> void:
+	var sp := Control.new()
+	sp.custom_minimum_size.y = 6
+	box.add_child(sp)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	for b in buttons:
+		h.add_child(b)
 	box.add_child(h)
 
 
@@ -198,23 +219,24 @@ func _options(items: Array, selected: int) -> OptionButton:
 
 func show_name(first: bool) -> void:
 	_show_backdrop(true)
-	var box := _screen("Name", 520)
+	var box := _screen("Name", 540)
 	_title(box, "Позывной" if first else "Сменить позывной",
-		"Так вас будут видеть в лобби, над укрытием и в ленте событий. 2–16 символов: буквы, цифры, пробел, дефис.")
+		"Так вас будут видеть в лобби, над укрытием и в ленте событий. 2–16 символов: буквы, цифры, пробел, дефис.",
+		"Первый запуск" if first else "Оператор")
 	var edit := LineEdit.new()
 	edit.text = Settings.player_name
 	edit.placeholder_text = "Например, Сокол"
 	edit.max_length = 16
-	edit.custom_minimum_size.y = 48
-	edit.add_theme_font_size_override("font_size", 24)
+	edit.custom_minimum_size.y = 54
+	edit.add_theme_font_size_override("font_size", 26)
 	box.add_child(edit)
 	var hint := UiTheme.label("", 16, UiTheme.WARN)
 	box.add_child(hint)
-	var ok := UiTheme.button("Продолжить", func(): _save_name(edit.text, hint))
-	box.add_child(ok)
+	var btns := [UiTheme.primary("Продолжить", func(): _save_name(edit.text, hint), 220)]
 	edit.text_submitted.connect(func(t): _save_name(t, hint))
 	if not first:
-		box.add_child(UiTheme.button("Назад", show_menu))
+		btns.append(UiTheme.button("Назад", show_menu, 160))
+	_actions(box, btns)
 	edit.call_deferred("grab_focus")
 
 
@@ -234,31 +256,62 @@ func _save_name(raw: String, hint: Label) -> void:
 
 func show_menu() -> void:
 	_show_backdrop(true)
-	var box := _screen("Menu", 460)
-	var t := UiTheme.label("ОПЕРАТОР", 56, UiTheme.ACCENT)
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(t)
-	var sub := UiTheme.label("Удержи укрытие. Последний на связи — победил.", 17, UiTheme.DIM)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var root := _root("Menu", 0.0)
+	# Затемнение слева под колонку меню, справа — открытый вид на карту.
+	var g := Gradient.new()
+	g.set_color(0, Color(0.015, 0.025, 0.035, 0.94))
+	g.set_color(1, Color(0.015, 0.025, 0.035, 0.0))
+	g.add_point(0.55, Color(0.015, 0.025, 0.035, 0.72))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.width = 128
+	gt.height = 4
+	var fade := TextureRect.new()
+	fade.texture = gt
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.stretch_mode = TextureRect.STRETCH_SCALE
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	fade.offset_right = 980
+	root.add_child(fade)
+	var col := MarginContainer.new()
+	col.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	col.offset_right = 560
+	col.add_theme_constant_override("margin_left", 84)
+	col.add_theme_constant_override("margin_top", 64)
+	col.add_theme_constant_override("margin_bottom", 56)
+	root.add_child(col)
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 4)
+	col.add_child(box)
+	box.add_child(UiTheme.kicker("FPV · от 2 до 8 операторов", UiTheme.DIM))
+	box.add_child(UiTheme.heading("ОПЕРАТОР", 84, UiTheme.ACCENT))
+	var sub := UiTheme.label("Удержи укрытие. Последний на связи — победил.", 19, UiTheme.TEXT)
 	box.add_child(sub)
+	box.add_child(_gap(26))
 	var who := HBoxContainer.new()
-	who.alignment = BoxContainer.ALIGNMENT_CENTER
-	who.add_child(UiTheme.label("Позывной: %s" % Settings.player_name, 19))
-	var ch := Button.new()
-	ch.text = "Изменить"
-	ch.pressed.connect(func(): show_name(false))
-	who.add_child(ch)
+	who.add_child(UiTheme.kicker("Позывной"))
+	who.add_child(UiTheme.heading(Settings.player_name, 22))
+	who.add_child(UiTheme.link("изменить", func(): show_name(false)))
 	box.add_child(who)
-	box.add_child(HSeparator.new())
-	box.add_child(UiTheme.button("Создать лобби", func(): _online(show_create)))
-	box.add_child(UiTheme.button("Список лобби", func(): _online(show_list)))
-	box.add_child(UiTheme.button("Войти по коду", func(): _online(show_code)))
-	box.add_child(UiTheme.button("Тренировка с ботами", show_training))
-	box.add_child(UiTheme.button("Настройки", show_settings))
-	box.add_child(UiTheme.button("Выход", func(): get_tree().quit()))
-	var ver := UiTheme.label("v%s · сервер %s" % [NetConfig.GAME_VERSION, NetConfig.host()], 14, UiTheme.DIM)
-	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(ver)
+	box.add_child(_gap(18))
+	box.add_child(UiTheme.nav("Создать лобби", func(): _online(show_create)))
+	box.add_child(UiTheme.nav("Список лобби", func(): _online(show_list)))
+	box.add_child(UiTheme.nav("Войти по коду", func(): _online(show_code)))
+	box.add_child(UiTheme.nav("Тренировка с ботами", show_training))
+	box.add_child(UiTheme.nav("Настройки", show_settings))
+	box.add_child(UiTheme.nav("Выход", func(): get_tree().quit()))
+	var ver := UiTheme.label("v%s · сервер %s" % [NetConfig.GAME_VERSION, NetConfig.host()], 14, Color(UiTheme.DIM, 0.8))
+	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	ver.position += Vector2(84, -40)
+	root.add_child(ver)
+
+
+func _gap(h: float) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size.y = h
+	return c
 
 
 func _online(next: Callable) -> void:
@@ -267,10 +320,10 @@ func _online(next: Callable) -> void:
 		return
 	_after_online = next
 	var box := _screen("Connecting", 460)
-	_title(box, "Подключение…", "Сервер %s:%d" % [NetConfig.host(), NetConfig.port()])
-	box.add_child(UiTheme.button("Отмена", func():
+	_title(box, "Подключение…", "Сервер %s:%d" % [NetConfig.host(), NetConfig.port()], "Сеть")
+	_actions(box, [UiTheme.button("Отмена", func():
 		net.disconnect_server()
-		show_menu()))
+		show_menu(), 180)])
 	net.connect_server(Settings.player_name)
 
 
@@ -293,8 +346,8 @@ func _on_offline(reason: String) -> void:
 # ---------- Создание лобби ----------
 
 func show_create() -> void:
-	var box := _screen("Create", 600)
-	_title(box, "Новое лобби")
+	var box := _screen("Create", 620)
+	_title(box, "Новое лобби", "", "Сетевая игра")
 	var title := LineEdit.new()
 	title.text = "Лобби %s" % Settings.player_name
 	title.max_length = 32
@@ -309,34 +362,30 @@ func show_create() -> void:
 	bots.text = "Заполнить пустые места ботами"
 	bots.button_pressed = true
 	box.add_child(bots)
-	var h := HBoxContainer.new()
-	h.add_child(UiTheme.button("Создать", func():
+	_actions(box, [UiTheme.primary("Создать", func():
 		net.send(Proto.CREATE, {"title": title.text, "public": pub.selected == 0, "slots": slots.selected + 2,
-			"lives": lives.selected + 1, "bots": bots.button_pressed}), 200))
-	h.add_child(UiTheme.button("Назад", show_menu, 200))
-	box.add_child(h)
+			"lives": lives.selected + 1, "bots": bots.button_pressed}), 220),
+		UiTheme.button("Назад", show_menu, 160)])
 
 
 # ---------- Список лобби ----------
 
 func show_list() -> void:
-	var box := _screen("List", 760)
-	_title(box, "Открытые лобби", "Список обновляется сам каждые несколько секунд.")
+	var box := _screen("List", 820)
+	_title(box, "Открытые лобби", "Список обновляется сам каждые несколько секунд.", "Сетевая игра")
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 380)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var list := VBoxContainer.new()
 	list.name = "Rows"
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
 	scroll.add_child(list)
 	box.add_child(scroll)
 	_lobby.rows = list
 	list.add_child(UiTheme.label("Загрузка…", 18, UiTheme.DIM))
-	var h := HBoxContainer.new()
-	h.add_child(UiTheme.button("Обновить", func(): net.send(Proto.LIST), 200))
-	h.add_child(UiTheme.button("Создать своё", show_create, 200))
-	h.add_child(UiTheme.button("Назад", show_menu, 200))
-	box.add_child(h)
+	_actions(box, [UiTheme.primary("Создать своё", show_create, 200), UiTheme.button("Обновить", func(): net.send(Proto.LIST), 160),
+		UiTheme.button("Назад", show_menu, 160)])
 	_list_t = 0.0
 
 
@@ -352,40 +401,46 @@ func _on_rooms(list: Array) -> void:
 	for r in list:
 		if typeof(r) != TYPE_DICTIONARY:
 			continue
+		var row := PanelContainer.new()
+		row.theme_type_variation = "Row"
 		var h := HBoxContainer.new()
-		var t := UiTheme.label(str(r.get("title", "")), 20)
-		t.custom_minimum_size.x = 260
+		h.add_theme_constant_override("separation", 14)
+		row.add_child(h)
+		var t := UiTheme.heading(str(r.get("title", "")), 20)
+		t.custom_minimum_size.x = 270
 		t.clip_text = true
 		h.add_child(t)
 		var host := UiTheme.label("хост: %s" % str(r.get("host", "")), 17, UiTheme.DIM)
-		host.custom_minimum_size.x = 180
+		host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		host.clip_text = true
 		h.add_child(host)
-		h.add_child(UiTheme.label("%d/%d" % [int(r.get("players", 0)), int(r.get("slots", 0))], 18))
+		var cnt := UiTheme.label("%d/%d" % [int(r.get("players", 0)), int(r.get("slots", 0))], 18)
+		cnt.add_theme_font_override("font", UiTheme.mono())
+		h.add_child(cnt)
 		var playing: bool = str(r.get("status", "")) == "match"
-		var st := UiTheme.label("идёт матч" if playing else "ожидание", 17, UiTheme.WARN if playing else UiTheme.ACCENT)
-		st.custom_minimum_size.x = 110
+		var st := UiTheme.label("идёт матч" if playing else "ожидание", 17, UiTheme.WARN if playing else UiTheme.GOOD)
+		st.custom_minimum_size.x = 100
 		h.add_child(st)
 		var code := str(r.get("code", ""))
-		var b := Button.new()
-		b.text = "Войти"
+		var b := UiTheme.button("Войти", func(): net.send(Proto.JOIN, {"code": code}), 110)
+		b.custom_minimum_size.y = 38
 		b.disabled = playing or int(r.get("players", 0)) >= int(r.get("slots", 0))
-		b.pressed.connect(func(): net.send(Proto.JOIN, {"code": code}))
 		h.add_child(b)
-		rows.add_child(h)
+		rows.add_child(row)
 
 
 # ---------- Вход по коду ----------
 
 func show_code() -> void:
-	var box := _screen("Code", 460)
-	_title(box, "Войти по коду", "Шесть цифр — их показывает экран лобби у хоста.")
+	var box := _screen("Code", 480)
+	_title(box, "Войти по коду", "Шесть цифр — их показывает экран лобби у хоста.", "Сетевая игра")
 	var edit := LineEdit.new()
 	edit.max_length = 6
 	edit.placeholder_text = "000000"
 	edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	edit.custom_minimum_size.y = 60
-	edit.add_theme_font_size_override("font_size", 36)
+	edit.custom_minimum_size.y = 72
+	edit.add_theme_font_size_override("font_size", 40)
+	edit.add_theme_font_override("font", UiTheme.mono())
 	box.add_child(edit)
 	var go := func(t: String):
 		var digits := ""
@@ -397,8 +452,7 @@ func show_code() -> void:
 			return
 		net.send(Proto.JOIN, {"code": digits})
 	edit.text_submitted.connect(go)
-	box.add_child(UiTheme.button("Войти", func(): go.call(edit.text)))
-	box.add_child(UiTheme.button("Назад", show_menu))
+	_actions(box, [UiTheme.primary("Войти", func(): go.call(edit.text), 220), UiTheme.button("Назад", show_menu, 160)])
 	edit.call_deferred("grab_focus")
 
 
@@ -419,33 +473,44 @@ func _on_room_state(st: Dictionary) -> void:
 
 func show_lobby() -> void:
 	_show_backdrop(true)
-	var box := _screen("Lobby", 1180)
+	var box := _screen("Lobby", 1220)
 	var head := HBoxContainer.new()
-	var title := UiTheme.label("", 30, UiTheme.ACCENT)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var tbox := VBoxContainer.new()
+	tbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tbox.add_theme_constant_override("separation", 2)
+	tbox.add_child(UiTheme.kicker("Лобби", UiTheme.ACCENT))
+	var title := UiTheme.heading("", 34)
 	title.clip_text = true
-	head.add_child(title)
-	var code := UiTheme.label("", 30, UiTheme.TEXT)
-	head.add_child(code)
-	var copy := Button.new()
-	copy.text = "Копировать код"
-	copy.pressed.connect(func():
-		DisplayServer.clipboard_set(str(net.room.get("code", "")))
-		show_toast("Код скопирован"))
-	head.add_child(copy)
-	box.add_child(head)
+	tbox.add_child(title)
 	var info := UiTheme.label("", 17, UiTheme.DIM)
-	box.add_child(info)
+	tbox.add_child(info)
+	head.add_child(tbox)
+	var code_card := UiTheme.card()
+	var code_box := HBoxContainer.new()
+	code_box.add_theme_constant_override("separation", 12)
+	code_card.add_child(code_box)
+	code_box.add_child(UiTheme.kicker("Код"))
+	var code := UiTheme.label("", 32, UiTheme.TEXT)
+	code.add_theme_font_override("font", UiTheme.mono())
+	code_box.add_child(code)
+	code_box.add_child(UiTheme.link("копировать", func():
+		DisplayServer.clipboard_set(str(net.room.get("code", "")))
+		show_toast("Код скопирован")))
+	code_card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(code_card)
+	box.add_child(head)
+	box.add_child(HSeparator.new())
 
 	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 20)
+	cols.add_theme_constant_override("separation", 24)
 	box.add_child(cols)
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(640, 0)
+	left.custom_minimum_size = Vector2(660, 0)
 	cols.add_child(left)
-	left.add_child(UiTheme.label("Операторы", 20, UiTheme.DIM))
+	left.add_child(UiTheme.kicker("Операторы"))
 	var players := VBoxContainer.new()
-	players.custom_minimum_size.y = 330
+	players.custom_minimum_size.y = 300
+	players.add_theme_constant_override("separation", 5)
 	left.add_child(players)
 	var results := RichTextLabel.new()
 	results.bbcode_enabled = true
@@ -456,13 +521,13 @@ func show_lobby() -> void:
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(right)
-	right.add_child(UiTheme.label("Чат", 20, UiTheme.DIM))
+	right.add_child(UiTheme.kicker("Чат"))
 	var chat := RichTextLabel.new()
 	chat.bbcode_enabled = true
 	chat.scroll_following = true
-	chat.custom_minimum_size = Vector2(440, 300)
+	chat.custom_minimum_size = Vector2(440, 250)
 	chat.add_theme_font_size_override("normal_font_size", 17)
-	var chat_bg := PanelContainer.new()
+	var chat_bg := UiTheme.card()
 	chat_bg.add_child(chat)
 	right.add_child(chat_bg)
 	var say := LineEdit.new()
@@ -478,17 +543,19 @@ func show_lobby() -> void:
 
 	box.add_child(HSeparator.new())
 	var bottom := HBoxContainer.new()
-	bottom.add_child(UiTheme.label("Укрытие", 18))
-	var style := _options(SimConst.SHELTER_STYLES, Settings.last_style)
-	bottom.add_child(style)
-	bottom.add_child(UiTheme.label("Дрон", 18))
-	var kind := _options(SimConst.KIND_NAMES, Settings.last_kind)
-	bottom.add_child(kind)
-	bottom.add_child(UiTheme.label("Модель", 18))
-	var model := _options(model_names(), Settings.last_model)
-	bottom.add_child(model)
-	var preview := DronePreview.new(Vector2i(170, 96))
+	bottom.add_theme_constant_override("separation", 18)
+	var preview := DronePreview.new(Vector2i(230, 132))
 	bottom.add_child(preview)
+	var gear := VBoxContainer.new()
+	gear.custom_minimum_size.x = 400
+	gear.add_theme_constant_override("separation", 6)
+	bottom.add_child(gear)
+	var style := _options(SimConst.SHELTER_STYLES, Settings.last_style)
+	_row(gear, "Укрытие", style, 100)
+	var kind := _options(SimConst.KIND_NAMES, Settings.last_kind)
+	_row(gear, "Дрон", kind, 100)
+	var model := _options(model_names(), Settings.last_model)
+	_row(gear, "Модель", model, 100)
 	var send_loadout := func(_i = 0):
 		Settings.last_style = style.selected
 		Settings.last_kind = kind.selected
@@ -499,21 +566,27 @@ func show_lobby() -> void:
 	style.item_selected.connect(send_loadout)
 	kind.item_selected.connect(send_loadout)
 	model.item_selected.connect(send_loadout)
-	var ready := Button.new()
-	ready.toggle_mode = true
-	ready.text = "Готов"
-	ready.custom_minimum_size = Vector2(160, 46)
-	ready.toggled.connect(func(on): net.send(Proto.READY, {"ready": on}))
-	bottom.add_child(ready)
-	var start := UiTheme.button("Начать матч", func(): net.send(Proto.START), 200)
-	bottom.add_child(start)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
-	bottom.add_child(UiTheme.button("Выйти из лобби", func():
+	var acts := VBoxContainer.new()
+	acts.alignment = BoxContainer.ALIGNMENT_END
+	bottom.add_child(acts)
+	var ready := Button.new()
+	ready.toggle_mode = true
+	ready.text = "Готов"
+	ready.custom_minimum_size = Vector2(240, 52)
+	ready.toggled.connect(func(on):
+		ready.text = "Готов ✓" if on else "Готов"
+		net.send(Proto.READY, {"ready": on}))
+	acts.add_child(ready)
+	var start := UiTheme.primary("Начать матч", func(): net.send(Proto.START), 240)
+	start.custom_minimum_size.y = 52
+	acts.add_child(start)
+	acts.add_child(UiTheme.button("Выйти из лобби", func():
 		net.send(Proto.LEAVE)
 		net.room = {}
-		show_menu(), 220))
+		show_menu(), 240))
 	box.add_child(bottom)
 	_lobby = {"title": title, "code": code, "info": info, "players": players, "results": results, "chat": chat,
 		"host_box": host_box, "ready": ready, "start": start, "style": style, "kind": kind}
@@ -526,7 +599,7 @@ func _fill_lobby(st: Dictionary) -> void:
 	var me := net.my_id
 	var am_host := int(st.get("host", 0)) == me
 	_lobby.title.text = str(st.get("title", ""))
-	_lobby.code.text = "Код %s" % str(st.get("code", ""))
+	_lobby.code.text = str(st.get("code", ""))
 	_lobby.info.text = "%s · мест %d · жизней %d · боты %s" % ["открытое" if st.get("public", true) else "закрытое",
 		int(st.get("slots", 8)), int(st.get("lives", 3)), "в пустых слотах" if st.get("bots", true) else "выключены"]
 	var plist: VBoxContainer = _lobby.players
@@ -534,33 +607,34 @@ func _fill_lobby(st: Dictionary) -> void:
 		c.queue_free()
 	var all_ready := true
 	for p in st.get("players", []):
+		var row := PanelContainer.new()
+		row.theme_type_variation = "Row"
 		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 12)
+		row.add_child(h)
 		var sw := ColorRect.new()
 		sw.color = SimConst.PLAYER_COLORS[int(p.color) % 8]
-		sw.custom_minimum_size = Vector2(14, 30)
+		sw.custom_minimum_size = Vector2(5, 28)
 		h.add_child(sw)
 		var is_host := int(p.pid) == int(st.get("host", 0))
-		var nm := UiTheme.label(("★ " if is_host else "") + str(p.name) + (" (вы)" if int(p.pid) == me else ""), 20)
-		nm.custom_minimum_size.x = 250
+		var nm := UiTheme.heading(str(p.name) + (" (вы)" if int(p.pid) == me else ""), 20)
+		nm.custom_minimum_size.x = 210
 		nm.clip_text = true
 		h.add_child(nm)
 		var mdl := clampi(int(p.get("model", 0)), 0, SimConst.MODEL_COUNT - 1)
-		h.add_child(UiTheme.label("%s · %s «%s»" % [SimConst.SHELTER_STYLES[int(p.style) % 4], SimConst.KIND_NAMES[int(p.kind) % 2],
-			SimConst.MODEL_NAMES[int(p.kind) % 2][mdl]], 17, UiTheme.DIM))
-		var sp := Control.new()
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		h.add_child(sp)
+		var gear := UiTheme.label("%s · %s «%s»" % [SimConst.SHELTER_STYLES[int(p.style) % 4], SimConst.KIND_NAMES[int(p.kind) % 2],
+			SimConst.MODEL_NAMES[int(p.kind) % 2][mdl]], 16, UiTheme.DIM)
+		gear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		gear.clip_text = true
+		h.add_child(gear)
 		var rd := "хост" if is_host else ("готов" if p.ready else "не готов")
-		h.add_child(UiTheme.label(rd, 17, UiTheme.ACCENT if (p.ready or is_host) else UiTheme.DIM))
+		h.add_child(UiTheme.kicker(rd, UiTheme.ACCENT if is_host else (UiTheme.GOOD if p.ready else UiTheme.DIM)))
 		if not is_host and not p.ready:
 			all_ready = false
 		if am_host and int(p.pid) != me:
 			var pid := int(p.pid)
-			var k := Button.new()
-			k.text = "Исключить"
-			k.pressed.connect(func(): net.send(Proto.KICK, {"pid": pid}))
-			h.add_child(k)
-		plist.add_child(h)
+			h.add_child(UiTheme.link("исключить", func(): net.send(Proto.KICK, {"pid": pid})))
+		plist.add_child(row)
 	var free: int = int(st.get("slots", 8)) - st.get("players", []).size()
 	if free > 0:
 		plist.add_child(UiTheme.label("Свободно мест: %d%s" % [free, " — займут боты" if st.get("bots", true) else ""], 17, UiTheme.DIM))
@@ -585,7 +659,7 @@ func _fill_lobby(st: Dictionary) -> void:
 	# Настройки лобби для хоста.
 	var hb: VBoxContainer = _lobby.host_box
 	if am_host and hb.get_child_count() == 0:
-		hb.add_child(UiTheme.label("Настройки (хост)", 18, UiTheme.DIM))
+		hb.add_child(UiTheme.kicker("Настройки хоста"))
 		var lives := _options(range(1, 6), int(st.get("lives", 3)) - 1)
 		var slots := _options(range(2, 9), int(st.get("slots", 8)) - 2)
 		var bots := CheckButton.new()
@@ -674,8 +748,8 @@ func _leave_match_view() -> void:
 # ---------- Тренировка ----------
 
 func show_training() -> void:
-	var box := _screen("Training", 520)
-	_title(box, "Тренировка", "Матч с ботами прямо на вашем компьютере — без сервера и интернета.")
+	var box := _screen("Training", 560)
+	_title(box, "Тренировка", "Матч с ботами прямо на вашем компьютере — без сервера и интернета.", "Одиночная игра")
 	var bots := _options(range(1, 8), 4)
 	_row(box, "Ботов", bots)
 	var lives := _options(range(1, 6), 2)
@@ -686,21 +760,19 @@ func show_training() -> void:
 	_row(box, "Укрытие", style)
 	var model := _options(model_names(), Settings.last_model)
 	_row(box, "Модель дрона", model)
-	var preview := DronePreview.new(Vector2i(480, 200))
+	var preview := DronePreview.new(Vector2i(500, 230))
 	box.add_child(preview)
 	var upd := func(_i = 0): preview.set_drone(kind.selected, model.selected, SimConst.PLAYER_COLORS[0])
 	kind.item_selected.connect(upd)
 	model.item_selected.connect(upd)
 	upd.call()
-	var h := HBoxContainer.new()
-	h.add_child(UiTheme.button("Начать", func():
+	_actions(box, [UiTheme.primary("Начать", func():
 		Settings.last_kind = kind.selected
 		Settings.last_model = model.selected
 		Settings.last_style = style.selected
 		Settings.save()
-		start_training(bots.selected + 1, lives.selected + 1), 220))
-	h.add_child(UiTheme.button("Назад", show_menu, 220))
-	box.add_child(h)
+		start_training(bots.selected + 1, lives.selected + 1), 220),
+		UiTheme.button("Назад", show_menu, 160)])
 
 
 func start_training(bots: int, lives := 3) -> void:
@@ -743,11 +815,32 @@ static func _training_seed(args: PackedStringArray) -> int:
 	return seed
 
 
+# ---------- Витрина моделей (для проверки графики: --screen=models) ----------
+
+func show_models() -> void:
+	_show_backdrop(false)
+	var root := _root("Models", 0.0)
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.06, 0.07)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(grid)
+	for kind in 2:
+		for model in SimConst.MODEL_COUNT:
+			var pv := DronePreview.new(Vector2i(526, 444))
+			pv.set_drone(kind, model, SimConst.PLAYER_COLORS[(kind * 3 + model) % 8])
+			grid.add_child(pv)
+
+
 # ---------- Настройки ----------
 
 func show_settings() -> void:
-	var box := _screen("Settings", 680)
-	_title(box, "Настройки")
+	var box := _screen("Settings", 720)
+	box.add_theme_constant_override("separation", 8)
+	_title(box, "Настройки", "", "Оператор")
 	var q := _options(["Низкое", "Среднее", "Высокое"], Settings.quality)
 	_row(box, "Качество графики", q)
 	var fs := CheckButton.new()
@@ -782,8 +875,10 @@ func show_settings() -> void:
 	host.text = Settings.server_host
 	host.placeholder_text = "по умолчанию: %s" % NetConfig.DEFAULT_HOST
 	_row(box, "Адрес сервера", host)
-	var h := HBoxContainer.new()
-	h.add_child(UiTheme.button("Сохранить", func():
+	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв (сбивает и чужие дроны рядом), F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, X — сеть, LB/RB — тип дрона.", 15, UiTheme.DIM)
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(help)
+	_actions(box, [UiTheme.primary("Сохранить", func():
 		Settings.quality = q.selected
 		Settings.fullscreen = fs.button_pressed
 		Settings.vsync = vs.button_pressed
@@ -803,12 +898,8 @@ func show_settings() -> void:
 			Settings.server_port = 0
 		Settings.save()
 		Settings.apply()
-		show_menu(), 220))
-	h.add_child(UiTheme.button("Назад", show_menu, 220))
-	box.add_child(h)
-	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв, F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, X — сеть, LB/RB — тип дрона.", 15, UiTheme.DIM)
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(help)
+		show_menu(), 220),
+		UiTheme.button("Назад", show_menu, 160)])
 
 
 func _slider(mn: float, mx: float, v: float, step: float) -> HSlider:

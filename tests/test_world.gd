@@ -173,6 +173,67 @@ func test_drone_drone_collision_swept() -> void:
 	t.check(w.drone_of(1) == null and w.drone_of(2) == null, "оба взорвались при встрече")
 
 
+func test_near_miss_triggers_proximity_fuse() -> void:
+	var w := _world()
+	_tick(w, 1.5)
+	var a := w.drone_of(1)
+	var b := w.drone_of(2)
+	# Встречные курсы с промахом 2 м вбок: корпуса не касаются, но взрыватель срабатывает.
+	a.pos = Vector3(0, 150, 0)
+	b.pos = Vector3(2.0, 150, -3.0)
+	a.vel = Vector3(0, 0, -40)
+	b.vel = Vector3(0, 0, 40)
+	w.step({})
+	t.check(w.drone_of(1) == null and w.drone_of(2) == null, "пролёт в 2 м — перехват")
+	t.check(w.players[1].rams == 1 and w.players[2].rams == 1, "таран засчитан обоим")
+
+	w = _world()
+	_tick(w, 1.5)
+	a = w.drone_of(1)
+	b = w.drone_of(2)
+	a.pos = Vector3(0, 150, 0)
+	b.pos = Vector3(SimConst.INTERCEPT_RADIUS + 1.5, 150, -3.0)
+	a.vel = Vector3(0, 0, -40)
+	b.vel = Vector3(0, 0, 40)
+	w.step({})
+	t.check(w.drone_of(1) != null and w.drone_of(2) != null, "пролёт в 4 м — мимо")
+
+
+func test_detonation_downs_enemy_drones_nearby() -> void:
+	var w := _world(3)
+	_tick(w, 1.5)
+	var a := w.drone_of(1)
+	var b := w.drone_of(2)
+	var c := w.drone_of(3)
+	a.age = 2.0
+	a.pos = Vector3(0, 150, 0)
+	b.pos = Vector3(SimConst.INTERCEPT_BLAST[0] - 1.0, 150, 0)
+	c.pos = Vector3(-SimConst.INTERCEPT_BLAST[0] - 4.0, 150, 0)
+	for d in [a, b, c]:
+		d.vel = Vector3.ZERO
+	w.events.clear()
+	w.detonate(1)
+	t.check(w.drone_of(1) == null, "свой дрон подорван")
+	t.check(w.drone_of(2) == null, "чужой дрон в радиусе сбит взрывом")
+	t.check(w.drone_of(3) != null, "дрон за радиусом цел")
+	t.check(w.players[1].rams == 1 and w.players[2].rams == 0, "перехват засчитан подорвавшему")
+	var rams := w.events.filter(func(e): return e.t == "ram")
+	t.check(rams.size() == 1 and rams[0].a == 1 and rams[0].b == 2, "событие перехвата: кто и кого")
+	t.check(w.players[1].lives == 3 and w.players[2].lives == 3 and w.players[3].lives == 3, "вдали от укрытий жизни целы")
+
+
+func test_netted_drone_blast_is_harmless_to_drones() -> void:
+	var w := _world()
+	_tick(w, 1.5)
+	var a := w.drone_of(1)
+	var b := w.drone_of(2)
+	a.pos = Vector3(0, 150, 0)
+	b.pos = Vector3(4.0, 150, 0)
+	w._neutral[a.id] = true   # побывал в сети — заряд обезврежен
+	w._explode(a, "ground", 0)
+	t.check(w.drone_of(2) != null, "обезвреженный дрон соседей не сбивает")
+
+
 func test_shelter_hit_costs_life_and_elimination_wins() -> void:
 	var w := _world(2, 2)
 	_tick(w, 1.5)

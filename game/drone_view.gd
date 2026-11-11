@@ -7,7 +7,7 @@ extends Node3D
 const PROP_DISC_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, depth_draw_never, shadows_disabled;
-uniform vec3 tint : source_color = vec3(0.1, 0.1, 0.11);
+uniform vec3 tint : source_color = vec3(0.16, 0.17, 0.18);
 instance uniform float spin = 0.0;
 varying vec3 lp;
 void vertex() { lp = VERTEX; }
@@ -15,8 +15,8 @@ void fragment() {
 	float r = UV.x;
 	float ang = atan(lp.z, lp.x);
 	float streak = 0.75 + 0.25 * sin(ang * 2.0 - TIME * 50.0);
-	float a = spin * (0.12 + 0.32 * smoothstep(0.25, 1.0, r)) * streak;
-	a += spin * smoothstep(0.92, 0.98, r) * smoothstep(1.0, 0.98, r) * 0.35;
+	float a = spin * (0.05 + 0.17 * smoothstep(0.2, 1.0, r)) * streak;
+	a += spin * smoothstep(0.93, 0.98, r) * smoothstep(1.0, 0.98, r) * 0.22;
 	ALBEDO = tint;
 	ROUGHNESS = 0.5;
 	ALPHA = clamp(a, 0.0, 1.0);
@@ -46,6 +46,30 @@ void fragment() {
 }
 """
 
+## Маячок чужого дрона: светящееся пятно цвета стороны, которое не становится меньше
+## заданного углового размера — дрон видно издалека. Рельеф и постройки его закрывают.
+const BEACON_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+instance uniform vec3 tint : source_color = vec3(1.0);
+void vertex() {
+	vec4 c = MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0);
+	float s = max(1.1, length(c.xyz) * 0.016);
+	c.xy += VERTEX.xy * s;
+	POSITION = PROJECTION_MATRIX * c;
+}
+void fragment() {
+	float r = length(UV - 0.5) * 2.0;
+	float halo = pow(clamp(1.0 - r, 0.0, 1.0), 2.0) * 0.55;
+	float core = smoothstep(0.22, 0.0, r);
+	float pulse = 0.8 + 0.2 * sin(TIME * 6.0);
+	ALBEDO = mix(tint, vec3(1.0), core * 0.6) * 1.6;
+	ALPHA = clamp(halo * pulse + core, 0.0, 1.0);
+}
+"""
+
+static var _beacon_mat: ShaderMaterial
+static var _beacon_mesh: QuadMesh
 static var _disc_mat: ShaderMaterial
 static var _blade_mat: ShaderMaterial
 static var _strobe_mat: ShaderMaterial
@@ -95,18 +119,29 @@ func setup(p_kind: int, p_color: Color, with_sound: bool, p_model := 0) -> void:
 
 	# Навигационные огни цвета стороны (общий материал на цвет) и белый строб.
 	for pos in info.nav:
-		add_child(_dot(pos, 0.022, _nav_mat(color)))
-	var strobe := _dot(info.strobe, 0.02, _strobe())
+		add_child(_dot(pos, 0.011, _nav_mat(color)))
+	var strobe := _dot(info.strobe, 0.009, _strobe())
 	strobe.set_instance_shader_parameter("phase", randf())
 	add_child(strobe)
-	_light = OmniLight3D.new()
-	_light.light_color = color
-	_light.light_energy = 1.5
-	_light.omni_range = 6.0
-	_light.shadow_enabled = false
-	add_child(_light)
-
-	if with_sound:
+	if with_sound:   # чужой дрон: отсвет огней, маячок и звук мотора
+		_light = OmniLight3D.new()
+		_light.light_color = color
+		_light.light_energy = 0.7
+		_light.omni_range = 4.0
+		_light.shadow_enabled = false
+		_light.position = Vector3(0, 0.3, 0)
+		add_child(_light)
+		if _beacon_mat == null:
+			_beacon_mat = _shader_mat(BEACON_SHADER)
+			_beacon_mesh = QuadMesh.new()
+			_beacon_mesh.size = Vector2.ONE
+		var beacon := MeshInstance3D.new()
+		beacon.mesh = _beacon_mesh
+		beacon.material_override = _beacon_mat
+		beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		beacon.extra_cull_margin = 30.0
+		beacon.set_instance_shader_parameter("tint", color)
+		add_child(beacon)
 		motor = AudioStreamPlayer3D.new()
 		motor.stream = SoundBank.motor_loop(kind)
 		motor.unit_size = 14.0
@@ -127,7 +162,7 @@ func _add_prop(p: Dictionary) -> void:
 	var spinner := Node3D.new()
 	pivot.add_child(spinner)
 	var blades := MeshInstance3D.new()
-	blades.mesh = _blade_mesh(r)
+	blades.mesh = _blade_mesh(r, int(p.get("blades", 2)))
 	blades.material_override = _blade()
 	blades.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	spinner.add_child(blades)
@@ -371,14 +406,15 @@ static func _disc_mesh(r: float) -> ArrayMesh:
 
 
 ## Две лопасти с круткой: узкие у ступицы, шире к середине, скруглённые к концу.
-static func _blade_mesh(r: float) -> ArrayMesh:
-	var key := int(r * 1000.0)
+static func _blade_mesh(r: float, count := 2) -> ArrayMesh:
+	var key := int(r * 1000.0) * 10 + count
 	if _blade_meshes.has(key):
 		return _blade_meshes[key]
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var steps := 6
-	for side: float in [-1.0, 1.0]:
+	for bi in count:
+		var rot := Basis(Vector3.UP, TAU * bi / count)
 		for i in steps:
 			var t0 := float(i) / steps
 			var t1 := float(i + 1) / steps
@@ -386,15 +422,15 @@ static func _blade_mesh(r: float) -> ArrayMesh:
 			var w1 := r * (0.06 + 0.12 * sin(PI * minf(t1 * 1.1, 1.0)))
 			var tw0 := 0.35 * (1.0 - t0)
 			var tw1 := 0.35 * (1.0 - t1)
-			var x0 := side * (0.04 * r + t0 * r * 0.96)
-			var x1 := side * (0.04 * r + t1 * r * 0.96)
+			var x0 := 0.04 * r + t0 * r * 0.96
+			var x1 := 0.04 * r + t1 * r * 0.96
 			var a := Vector3(x0, -w0 * sin(tw0), -w0 * cos(tw0))
 			var b := Vector3(x0, w0 * sin(tw0), w0 * cos(tw0))
 			var c := Vector3(x1, w1 * sin(tw1), w1 * cos(tw1))
 			var d := Vector3(x1, -w1 * sin(tw1), -w1 * cos(tw1))
 			for v in [a, b, c, a, c, d]:
 				st.set_normal(Vector3.UP)
-				st.add_vertex(v)
+				st.add_vertex(rot * v)
 	var m := st.commit()
 	_blade_meshes[key] = m
 	return m

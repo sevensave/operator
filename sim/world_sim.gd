@@ -19,6 +19,7 @@ var _next_drone := 1
 var _history := {}         # pid -> Array[DroneInput] (для задержки управления)
 var _los := {}             # drone id -> bool (кэш прямой видимости до своей антенны)
 var _neutral := {}         # drone id -> true: запутался в сети, взрыв не считается
+var _doomed := {}          # id дронов, которые взорвутся сами в этом же тике (взрывная волна их не трогает)
 
 
 func setup(p_seed: int, roster: Array, lives: int) -> void:
@@ -285,11 +286,12 @@ func _check_collisions(prev: Dictionary) -> void:
 	var dead := {}  # id -> [cause, other_owner]
 	var list: Array = drones.values()
 	# Дрон + дрон: проверка по отрезкам за тик, чтобы не проскочить на скорости.
+	# Взрыватель неконтактный — хватает пройти рядом, попадать корпусом в корпус не нужно.
 	for i in list.size():
 		var a: DroneState = list[i]
 		for j in range(i + 1, list.size()):
 			var b: DroneState = list[j]
-			var rr := a.radius() + b.radius()
+			var rr := maxf(a.radius() + b.radius(), SimConst.INTERCEPT_RADIUS)
 			if _swept_hit(prev[a.id], a.pos, prev[b.id], b.pos, rr):
 				dead[a.id] = ["ram", b.owner]
 				dead[b.id] = ["ram", a.owner]
@@ -307,10 +309,12 @@ func _check_collisions(prev: Dictionary) -> void:
 			if p.pid != d.owner and not p.eliminated and d.pos.distance_to(shelter_center(p)) < SimConst.SHELTER_HIT_RADIUS * 0.6:
 				dead[d.id] = ["shelter", 0]
 				break
+	_doomed = dead
 	for id in dead.keys():
 		# Дрон мог исчезнуть раньше в этом же цикле: взрыв выбил его владельца.
 		if drones.has(id):
 			_explode(drones[id], dead[id][0], dead[id][1])
+	_doomed = {}
 
 
 static func _swept_hit(a0: Vector3, a1: Vector3, b0: Vector3, b1: Vector3, r: float) -> bool:
@@ -336,8 +340,16 @@ func _explode(d: DroneState, cause: String, other: int) -> void:
 		owner.rams += 1
 		if d.owner < other:
 			events.append({"t": "ram", "a": d.owner, "b": other})
+	if cause == "blast" and players.has(other):
+		players[other].rams += 1
+		events.append({"t": "ram", "a": other, "b": d.owner})
 	if neutral:
 		return
+	# Взрывная волна сбивает чужие дроны рядом: перехватить можно и подрывом (Пробел).
+	var reach: float = SimConst.INTERCEPT_BLAST[d.kind]
+	for o: DroneState in drones.values():
+		if drones.has(o.id) and o.owner != d.owner and not _doomed.has(o.id) and o.pos.distance_to(d.pos) < reach:
+			_explode(o, "blast", d.owner)
 	var blast: float = SimConst.BLAST_RADIUS[d.kind]
 	for p in players.values():
 		if p.pid == d.owner or p.eliminated or p.grace > 0.0:

@@ -106,7 +106,7 @@ func _ready() -> void:
 		osd.visible = false
 	osd.push_line("Карта: %s" % map_title(), UiTheme.ACCENT)
 	osd.push_line("W/S — газ, A/D — поворот, мышь или стрелки — наклон", UiTheme.DIM)
-	osd.push_line("Shift — форсаж, Пробел — подрыв, F — сеть, Tab — таблица", UiTheme.DIM)
+	osd.push_line("Shift — форсаж, Пробел — подрыв (сбивает и дроны рядом), F — сеть, Tab — таблица", UiTheme.DIM)
 
 
 ## «Каньон · закат · сильный ветер» — архетип и всё, что заметно игроку.
@@ -416,6 +416,49 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 		data.trap_cd = me.trap_cd
 		data.next_kind = SimConst.KIND_NAMES[me.kind]
 	data.flying = d != null
+	var warns := []
+	# Чужие дроны: рамка на экране (с точкой упреждения) или стрелка у края.
+	var targets := []
+	var ref: Vector3 = d.pos if d != null else cam.global_position
+	var my_speed: float = d.vel.length() if d != null else 0.0
+	var view := Rect2(Vector2.ZERO, osd.size).grow(-30.0)
+	var at_home := false
+	var hot_any := false
+	for o: DroneState in drones.values():
+		if o.owner == feed.my_pid:
+			continue
+		if me != null and not me.eliminated and o.pos.distance_to(feed.terrain.shelters[me.shelter]) < SimConst.TRAP_RADIUS:
+			at_home = true
+		var dist := ref.distance_to(o.pos)
+		if dist > 700.0:
+			continue
+		var hot: bool = d != null and dist < SimConst.INTERCEPT_BLAST[d.kind] * 0.9
+		hot_any = hot_any or hot
+		var m := {"color": _color(o.owner), "label": "дрон " + _name(o.owner), "dist": dist, "hot": hot, "on": false}
+		var behind := cam.is_position_behind(o.pos)
+		var sc := Vector2.ZERO if behind else cam.unproject_position(o.pos)
+		if not behind and view.has_point(sc):
+			m.on = true
+			m.pos = sc
+			if d != null and dist < 450.0 and dist > 8.0:
+				var lead := o.pos + o.vel * (dist / maxf(my_speed, 20.0))
+				if not cam.is_position_behind(lead):
+					m.lead = cam.unproject_position(lead)
+		elif dist < 400.0:
+			var loc := cam.global_transform.affine_inverse() * o.pos
+			var dir := Vector2(loc.x, -loc.y)
+			dir = dir.normalized() if dir.length() > 0.001 else Vector2.DOWN
+			var half := osd.size * 0.5 - Vector2(70, 70)
+			m.pos = osd.size * 0.5 + dir * minf(half.x / maxf(absf(dir.x), 0.001), half.y / maxf(absf(dir.y), 0.001))
+			m.dir = dir
+		else:
+			continue
+		targets.append(m)
+	data.targets = targets
+	if hot_any:
+		warns.append(["ЦЕЛЬ РЯДОМ — ПОДРЫВ [ПРОБЕЛ]", true])
+	if at_home and me.trap_cd <= 0.0 and not feed.sudden_death():
+		warns.append(["ДРОН У УКРЫТИЯ — СЕТЬ [F]", true])
 	if d != null:
 		var f := cam.global_transform.basis * Vector3.FORWARD
 		data.heading = posmod(rad_to_deg(atan2(f.x, -f.z)), 360.0)
@@ -463,7 +506,6 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 					smarks.append({"pos": sc, "color": col, "label": p.name, "dist": to.length()})
 		data.marks = marks
 		data.screen_marks = smarks
-		var warns := []
 		if d.trapped > 0.0:
 			warns.append(["ДРОН В СЕТИ", true])
 		if not d.control and d.trapped <= 0.0:
@@ -480,7 +522,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 			warns.append(["АКБ НА ИСХОДЕ", true])
 		if d.kind == SimConst.Kind.PLANE and FlightPlane.stalled(d) and d.age > 2.0:
 			warns.append(["СВАЛИВАНИЕ", true])
-		data.warnings = warns
+	data.warnings = warns
 	# Крупная надпись.
 	osd.big_text = ""
 	osd.big_sub = ""
@@ -532,7 +574,7 @@ func _on_event(ev: Dictionary) -> void:
 				hit_flash = 0.9
 				shake = 0.6
 				var why := {"ground": "Дрон разбился о землю", "tree": "Дрон задел дерево", "building": "Дрон врезался в постройку",
-					"turret": "Дрон сбит турелью", "ram": "Таран: дрон потерян", "detonate": "Подрыв", "shelter": "Удар по укрытию",
+					"turret": "Дрон сбит турелью", "ram": "Таран: дрон потерян", "blast": "Дрон сбит взрывом", "detonate": "Подрыв", "shelter": "Удар по укрытию",
 					"bounds": "Дрон ушёл за край карты", "out": ""}
 				var t: String = why.get(ev.cause, "Дрон потерян")
 				if t != "":
@@ -562,7 +604,9 @@ func _on_event(ev: Dictionary) -> void:
 				n2.get_node("BeaconLight").visible = false
 				_ruin_shelter(n2)
 		"ram":
-			osd.push_line("Таран: %s и %s" % [_name(ev.a), _name(ev.b)], UiTheme.TEXT)
+			osd.push_line("Перехват: %s и %s" % [_name(ev.a), _name(ev.b)], UiTheme.TEXT)
+			if ev.a == feed.my_pid:
+				_beep(990.0, 0.1)
 		"caught":
 			osd.push_line("%s поймал сетью дрон %s" % [_name(ev.pid), _name(ev.victim)], _color(ev.pid))
 		"trap":
@@ -605,20 +649,23 @@ func _toggle_menu() -> void:
 func _build_pause_menu() -> Control:
 	var root := ColorRect.new()
 	root.theme = UiTheme.theme()
-	root.color = Color(0, 0, 0, 0.55)
+	root.color = Color(0.015, 0.025, 0.035, 0.6)
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(420, 0)
+	center.add_child(panel)
 	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_CENTER)
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.position = Vector2(-160, -120)
-	box.custom_minimum_size = Vector2(320, 240)
-	root.add_child(box)
-	box.add_child(UiTheme.label("Пауза оператора", 30, UiTheme.ACCENT))
-	box.add_child(UiTheme.label("Матч продолжается — дрон висит без команд", 16, UiTheme.DIM))
-	box.add_child(UiTheme.button("Вернуться", _toggle_menu))
-	var acro := UiTheme.button("Режим: аркада / акро (C)", func():
+	panel.add_child(box)
+	box.add_child(UiTheme.kicker("Пауза оператора", UiTheme.ACCENT))
+	box.add_child(UiTheme.heading("Меню", 34))
+	box.add_child(UiTheme.label("Матч продолжается — дрон висит без команд.", 16, UiTheme.DIM))
+	box.add_child(HSeparator.new())
+	box.add_child(UiTheme.primary("Вернуться", _toggle_menu))
+	box.add_child(UiTheme.button("Режим: аркада / акро (C)", func():
 		Settings.acro = not Settings.acro
-		osd.push_line("Режим: %s" % ("акро" if Settings.acro else "аркада"), UiTheme.ACCENT))
-	box.add_child(acro)
+		osd.push_line("Режим: %s" % ("акро" if Settings.acro else "аркада"), UiTheme.ACCENT)))
 	box.add_child(UiTheme.button("Выйти из матча", func(): leave_requested.emit()))
 	return root
