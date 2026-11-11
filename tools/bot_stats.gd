@@ -1,17 +1,18 @@
 extends SceneTree
-## Статистика бот-матча: причины взрывов, попадания. godot --headless --path . -s res://tools/bot_stats.gd -- [игроков] [минут]
+## Статистика бот-матча: причины взрывов, попадания. godot --headless --path . -s res://tools/bot_stats.gd -- [игроков] [минут] [сид]
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var n := int(args[0]) if args.size() > 0 else 4
 	var minutes := float(args[1]) if args.size() > 1 else 4.0
+	var seed := int(args[2]) if args.size() > 2 else 23
 	var w := WorldSim.new()
 	var roster := []
 	for i in n:
 		roster.append({"pid": i + 1, "name": "Б%d" % i, "color": i, "bot": true, "kind": i % 2})
-	w.setup(23, roster, 3)
+	w.setup(seed, roster, 3)
 	var bots := {}
 	for i in n:
-		bots[i + 1] = BotAI.new(i + 1, 0.8, i)
+		bots[i + 1] = BotAI.new(i + 1, 0.8, seed + i)
 	var causes := {}
 	var kinds := {}
 	var mind := {}

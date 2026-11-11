@@ -123,7 +123,7 @@ func think(w: WorldSim) -> DroneInput:
 		var v_right := d.vel.dot(right)
 		inp.pitch = clampf((v_des.dot(fwd) - v_fwd) * 0.12, -1, 1)
 		inp.roll = clampf((v_des.dot(right) - v_right) * 0.12 + sin(t * 3.0 + pid) * sloppy, -1, 1)
-		inp.throttle = clampf((alt - d.pos.y) * 0.3 - d.vel.y * 0.05, -1, 1)
+		inp.throttle = _vthrottle((alt - d.pos.y) * 0.3 - d.vel.y * 0.05)
 		inp.boost = (dist < 160.0 and dist > 25.0) or intercept
 		if absf(heading_err) > 1.2:
 			inp.pitch *= 0.3
@@ -153,8 +153,14 @@ func think(w: WorldSim) -> DroneInput:
 func _hover(d: DroneState, w: WorldSim) -> DroneInput:
 	var inp := DroneInput.new()
 	var g := w.terrain.height_at(d.pos.x, d.pos.z)
-	inp.throttle = clampf((g + 20.0 - d.pos.y) * 0.3, -1, 1)
+	inp.throttle = _vthrottle((g + 20.0 - d.pos.y) * 0.3)
 	return inp
+
+
+## Боты настроены на прежний линейный газ (±1 → ±10 м/с). Снижение в аркаде стало
+## быстрее и нелинейным — переводим их команду в ту же вертикальную скорость.
+static func _vthrottle(cmd: float) -> float:
+	return FlightCopter.throttle_for_vspeed(clampf(cmd, -1.0, 1.0) * 10.0)
 
 
 func _pick_target(w: WorldSim, me: PlayerSim) -> void:

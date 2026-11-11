@@ -5,7 +5,7 @@ class_name NetConfig
 ## Адрес выделенного сервера (хост nether). Локально перекрывается OPERATOR_SERVER или настройками.
 const DEFAULT_HOST := "150.251.139.13"
 const DEFAULT_PORT := 27630
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
 const GAME_VERSION := "0.1.0"
 
 

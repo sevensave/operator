@@ -755,7 +755,7 @@ func show_settings() -> void:
 		show_menu(), 220))
 	h.add_child(UiTheme.button("Назад", show_menu, 220))
 	box.add_child(h)
-	var help := UiTheme.label("Управление: W/S — газ, A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв, F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, X — сеть, LB/RB — тип дрона.", 15, UiTheme.DIM)
+	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв, F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, X — сеть, LB/RB — тип дрона.", 15, UiTheme.DIM)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(help)
 

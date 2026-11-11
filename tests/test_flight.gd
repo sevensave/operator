@@ -63,6 +63,55 @@ func test_copter_climb_and_turn() -> void:
 	t.check(f.x > 0.3, "рыск вправо поворачивает нос на +X: %s" % f)
 
 
+func test_copter_arcade_fast_descent() -> void:
+	var d := _copter(150.0)
+	var inp := DroneInput.new()
+	inp.throttle = -1.0
+	_run(d, inp, 3.0)
+	t.check(d.vel.y < -17.0, "полный газ вниз — быстрое снижение: %.1f м/с" % d.vel.y)
+	t.check(d.pos.y < 115.0, "за 3 с потеряно больше 35 м: %.1f" % d.pos.y)
+
+
+func test_copter_arcade_dive_keeps_speed() -> void:
+	var d := _copter(300.0)
+	var inp := DroneInput.new()
+	inp.pitch = 1.0
+	_run(d, inp, 6.0)   # разгон по горизонтали
+	inp.throttle = -1.0
+	_run(d, inp, 3.0)
+	var hs := Vector2(d.vel.x, d.vel.z).length()
+	var angle := rad_to_deg(atan2(-d.vel.y, hs))
+	t.check(d.vel.y < -15.0, "пикирование: вертикальная %.1f м/с" % d.vel.y)
+	t.check(hs > 15.0, "ход сохраняется: %.1f м/с" % hs)
+	t.check(angle >= 30.0, "угол пикирования ≥ 30°: %.0f°" % angle)
+
+
+func test_copter_arcade_gentle_descent() -> void:
+	var d := _copter(100.0)
+	var inp := DroneInput.new()
+	inp.throttle = -0.3
+	_run(d, inp, 3.0)
+	t.check(d.vel.y < -2.0 and d.vel.y > -5.0, "малый газ вниз — мягкое снижение: %.2f м/с" % d.vel.y)
+
+
+func test_copter_arcade_descent_stops_on_release() -> void:
+	var d := _copter(200.0)
+	var inp := DroneInput.new()
+	inp.throttle = -1.0
+	_run(d, inp, 3.0)
+	_run(d, DroneInput.new(), 2.0)
+	t.check(absf(d.vel.y) < 1.0, "газ отпущен — снижение погашено за 2 с: %.2f м/с" % d.vel.y)
+
+
+func test_copter_arcade_vspeed_curve() -> void:
+	t.near(FlightCopter.arcade_vspeed(0.0), 0.0, 0.001, "центр газа — висение")
+	t.near(FlightCopter.arcade_vspeed(1.0), FlightCopter.CLIMB_SPEED, 0.001, "вверх")
+	t.near(FlightCopter.arcade_vspeed(-1.0), -FlightCopter.DESCENT_SPEED, 0.001, "вниз")
+	t.check(FlightCopter.arcade_vspeed(-0.2) > -2.5, "малое отклонение мягкое")
+	for v in [-22.0, -9.0, -3.0, -0.5, 0.0, 4.0, 10.0]:
+		t.near(FlightCopter.arcade_vspeed(FlightCopter.throttle_for_vspeed(v)), v, 0.01, "обратная кривая %.1f" % v)
+
+
 func test_copter_falls_without_control() -> void:
 	var d := _copter()
 	d.control = false
