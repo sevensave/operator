@@ -596,7 +596,7 @@ func _fill_lobby(st: Dictionary) -> void:
 
 
 func _on_chat(m: Dictionary) -> void:
-	if not _lobby.has("chat"):
+	if not _lobby.has("chat") or not is_instance_valid(_lobby.chat):
 		return
 	var rt: RichTextLabel = _lobby.chat
 	var text := Proto.clean_text(m.get("text", ""), Proto.MAX_CHAT).replace("[", "(")
@@ -621,6 +621,7 @@ func _start_view() -> void:
 	if ui:
 		ui.queue_free()
 		ui = null
+	_lobby = {}
 	_show_backdrop(false)
 	match_view = MatchView.new()
 	match_view.setup(feed, Settings.quality)

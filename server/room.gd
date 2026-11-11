@@ -206,6 +206,10 @@ func start(by: int) -> String:
 	var bi := 0
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
+	var taken := {}
+	for pid in info:
+		taken[info[pid].name] = true
+	var free_names := BOT_NAMES.filter(func(n): return not taken.has(n))
 	while roster.size() < total:
 		var c := 0
 		while used_colors.has(c):
@@ -213,7 +217,7 @@ func start(by: int) -> String:
 		used_colors[c] = true
 		var bpid := _bot_pid
 		_bot_pid -= 1
-		roster.append({"pid": bpid, "name": BOT_NAMES[bi % BOT_NAMES.size()] + " (бот)", "color": c,
+		roster.append({"pid": bpid, "name": free_names[bi % free_names.size()] + " (бот)", "color": c,
 			"style": rng.randi() % 4, "kind": rng.randi() % 2, "bot": true})
 		bot_ai[bpid] = BotAI.new(bpid, rng.randf_range(0.45, 0.85), rng.randi())
 		bi += 1
