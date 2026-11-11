@@ -139,7 +139,7 @@ func step(inputs: Dictionary) -> void:
 			continue
 		var eff := _effective_input(d, inp)
 		var ground := terrain.height_at(d.pos.x, d.pos.z)
-		var air := Wind.at(d.pos, time, seed, ground)
+		var air := Wind.at(d.pos, time, terrain.preset, ground)
 		if d.kind == SimConst.Kind.PLANE:
 			FlightPlane.step(d, eff, dt, air)
 		else:

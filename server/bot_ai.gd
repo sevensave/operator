@@ -71,9 +71,20 @@ func think(w: WorldSim) -> DroneInput:
 	var flat := Vector3(to.x, 0, to.z)
 	var dist := flat.length()
 	var ground := w.terrain.height_at(d.pos.x, d.pos.z)
-	var ahead := d.pos + Vector3(d.vel.x, 0, d.vel.z) * 1.6
+	var hv := Vector3(d.vel.x, 0, d.vel.z)
+	var ahead := d.pos + hv * 1.6
 	var ground_ahead := w.terrain.height_at(ahead.x, ahead.z)
-	var ground_far := w.terrain.height_at(d.pos.x + d.vel.x * 3.0, d.pos.z + d.vel.z * 3.0)
+	# Самолёт не зависает и набирает медленнее — смотрит дальше (до 5 с), коптер — на 3 с.
+	var horizon := 5.0 if d.kind == SimConst.Kind.PLANE else 3.0
+	var ground_far := ground_ahead
+	var steep := 0.0   # самый крутой требуемый набор впереди (м подъёма на м пути)
+	for k in [2.4, 3.2, 4.0, 5.0]:
+		if k > horizon:
+			break
+		var gk := w.terrain.height_at(d.pos.x + hv.x * k, d.pos.z + hv.z * k)
+		ground_far = maxf(ground_far, gk)
+		var run := maxf(hv.length() * k, 1.0)
+		steep = maxf(steep, (gk + 12.0 - d.pos.y) / run)
 	var g := maxf(ground, maxf(ground_ahead, ground_far - 4.0))
 	var cruise := 24.0 if dist > 260.0 else 11.0
 	if d.signal_q < 0.35 and dist > 200.0:
@@ -86,11 +97,21 @@ func think(w: WorldSim) -> DroneInput:
 			alt = maxf(alt, d.pos.y + 14.0)
 			break
 	# Край карты — разворот к центру.
-	if Vector2(d.pos.x, d.pos.z).length() > 520.0 and not intercept:
+	if Vector2(d.pos.x, d.pos.z).length() > SimConst.MAP_HALF - 80.0 and not intercept:
 		aim = Vector3(0, aim.y, 0)
 		to = aim - d.pos
 		flat = Vector3(to.x, 0, to.z)
 		dist = flat.length()
+	# Стена впереди круче, чем успеем набрать, — уходим вбок, туда, где ниже.
+	var climb_ok := 0.3 if d.kind == SimConst.Kind.PLANE else 0.8
+	if steep > climb_ok and not intercept and dist > 90.0 and hv.length() > 5.0:
+		var dir := hv.normalized()
+		var side := Vector3(-dir.z, 0, dir.x)
+		var look := hv.length() * 2.5
+		var gl := w.terrain.height_at(d.pos.x + (dir.x - side.x) * look, d.pos.z + (dir.z - side.z) * look)
+		var gr := w.terrain.height_at(d.pos.x + (dir.x + side.x) * look, d.pos.z + (dir.z + side.z) * look)
+		var turn := side if gr < gl else -side
+		flat = (dir + turn * clampf(steep / climb_ok - 0.6, 0.4, 1.5)).normalized() * dist
 	if dist < 70.0 or intercept:
 		alt = lerpf(aim.y, alt, clampf((dist - 15.0) / 60.0, 0.0, 1.0))
 	if intercept:
@@ -118,6 +139,8 @@ func think(w: WorldSim) -> DroneInput:
 		var speed := 30.0
 		if intercept:
 			speed = 34.0
+		elif steep > 0.3:
+			speed *= clampf(0.3 / steep, 0.3, 1.0)   # крутой склон впереди — притормаживаем и набираем
 		var v_des := want_dir * speed + right * weave * 10.0
 		var v_fwd := d.vel.dot(fwd)
 		var v_right := d.vel.dot(right)

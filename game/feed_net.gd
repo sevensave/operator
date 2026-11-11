@@ -130,7 +130,7 @@ func _step_pred(inp: DroneInput) -> void:
 	_local_tick += 1
 	var t := _local_tick * SimConst.DT
 	var ground := terrain.height_at(_pred.pos.x, _pred.pos.z)
-	var air := Wind.at(_pred.pos, t, world.seed, ground)
+	var air := Wind.at(_pred.pos, t, world.terrain.preset, ground)
 	if _pred.kind == SimConst.Kind.PLANE:
 		FlightPlane.step(_pred, inp, SimConst.DT, air)
 	else:

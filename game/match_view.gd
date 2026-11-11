@@ -98,8 +98,15 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if OS.get_cmdline_user_args().has("--cinematic"):   # кадры для арта: без OSD
 		osd.visible = false
+	osd.push_line("Карта: %s" % map_title(), UiTheme.ACCENT)
 	osd.push_line("W/S — газ, A/D — поворот, мышь или стрелки — наклон", UiTheme.DIM)
 	osd.push_line("Shift — форсаж, Пробел — подрыв, F — сеть, Tab — таблица", UiTheme.DIM)
+
+
+## «Каньон · сильный ветер» — архетип и всё, что заметно игроку.
+func map_title() -> String:
+	var p: MapPreset = feed.terrain.preset
+	return "%s · %s" % [p.title(), MapPreset.WIND_NAMES[p.wind_level]]
 
 
 func _player(stream: AudioStream, db: float) -> AudioStreamPlayer:
@@ -391,7 +398,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 		data.agl = feed.terrain.agl(d.pos)
 		data.kind_name = SimConst.KIND_NAMES[d.kind]
 		data.acro = _last_input.acro
-		var w := Wind.mean(feed.match_time(), feed.terrain.seed)
+		var w := Wind.mean(feed.match_time(), feed.terrain.preset)
 		var cb := cam.global_transform.basis
 		var cr := cb.x
 		cr.y = 0
@@ -473,6 +480,8 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 		else:
 			osd.big_text = "Запуск через %.1f" % me.respawn_t
 			osd.big_sub = "Следующий: %s  ·  1 — коптер, 2 — самолёт" % SimConst.KIND_NAMES[me.kind]
+			if feed.match_time() < 4.0:
+				osd.big_sub = "Карта: %s  ·  %s" % [map_title(), osd.big_sub]
 		osd.big_color = UiTheme.TEXT
 	osd.data = data
 

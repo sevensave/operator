@@ -18,7 +18,7 @@
 ./tools/check.sh && ./tools/test.sh && LIVES=1 ./tools/smoke_bots.sh
 ```
 
-Графику смотреть скриншотами: `godot --path . -- --training --autopilot --seed1 --shot=/tmp/a.png --shot-at=14`.
+Графику смотреть скриншотами: `godot --path . -- --training --autopilot --seed1 --shot=/tmp/a.png --shot-at=14` (карта: `--seed=N`, архетип: `--preset=0..4`).
 
 ## Релиз
 

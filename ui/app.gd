@@ -685,11 +685,26 @@ func start_training(bots: int, lives := 3) -> void:
 	_leave_match_view()
 	var f := FeedLocal.new()
 	var args := OS.get_cmdline_user_args()
-	f.start(1 if args.has("--seed1") else randi() % 1000000, roster, lives, 1)
+	f.start(_training_seed(args), roster, lives, 1)
 	if args.has("--autopilot"):
 		f.autopilot = BotAI.new(1, 0.9, 77)
 	feed = f
 	_start_view()
+
+
+## Сид тренировки: --seed=N (или старый --seed1), --preset=N — ближайший сид с архетипом N
+## (0 Долина, 1 Плато, 2 Хребет, 3 Каньон, 4 Холмы).
+static func _training_seed(args: PackedStringArray) -> int:
+	var seed := randi() % 1000000
+	for a in args:
+		if a == "--seed1":
+			seed = 1
+		elif a.begins_with("--seed="):
+			seed = absi(a.substr(7).to_int())
+	for a in args:
+		if a.begins_with("--preset="):
+			seed = MapPreset.seed_with_relief(seed, a.substr(9).to_int())
+	return seed
 
 
 # ---------- Настройки ----------

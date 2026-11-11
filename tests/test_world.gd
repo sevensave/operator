@@ -31,6 +31,117 @@ func test_terrain_deterministic() -> void:
 		t.near(a.height_at(s.x, s.z), s.y, 0.6, "площадка укрытия ровная")
 
 
+func _terrain_hash(tr: Terrain) -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_MD5)
+	ctx.update(tr.heights.to_byte_array())
+	ctx.update(var_to_bytes(tr.trees))
+	ctx.update(var_to_bytes(tr.boxes))
+	ctx.update(var_to_bytes(tr.shelters))
+	return ctx.finish().hex_encode()
+
+
+func _relief_seed(r: int, k := 0) -> int:
+	return MapPreset.seed_with_relief(1000 + k * 7919 + r * 37, r)
+
+
+func test_preset_from_seed() -> void:
+	for r in MapPreset.RELIEF_COUNT:
+		for base in [0, 17, 123456, 999999]:
+			var sd := MapPreset.seed_with_relief(base, r)
+			t.check(MapPreset.from_seed(sd).relief == r and sd >= base and sd < base + 5, "сид %d → архетип %d" % [sd, r])
+	var a := MapPreset.from_seed(4242)
+	var b := MapPreset.from_seed(4242)
+	t.check(a.relief == b.relief and a.wind_base == b.wind_base and a.tree_kind == b.tree_kind \
+		and a.shelter_ring == b.shelter_ring and a.clusters == b.clusters, "пресет детерминирован")
+	t.check(a.title() != "", "у карты есть название")
+
+
+func test_every_relief_is_deterministic_and_playable() -> void:
+	for r in MapPreset.RELIEF_COUNT:
+		for k in 2:
+			var sd := _relief_seed(r, k)
+			var a := Terrain.new()
+			a.generate(sd)
+			var b := Terrain.new()
+			b.generate(sd)
+			var name := "%s (сид %d)" % [a.preset.title(), sd]
+			t.check(_terrain_hash(a) == _terrain_hash(b), "%s: одинаковая карта при двух генерациях" % name)
+			t.check(a.shelters.size() == 8, "%s: 8 укрытий" % name)
+			t.check(a.trees.size() >= 200 and a.boxes.size() >= 10, "%s: есть лес (%d) и постройки (%d)" % [name, a.trees.size(), a.boxes.size()])
+			var min_d := INF
+			for i in a.shelters.size():
+				var s := a.shelters[i]
+				t.near(a.height_at(s.x, s.z), s.y, 0.6, "%s: площадка укрытия %d ровная" % [name, i])
+				t.check(a.collide(s + Vector3(0, 3, 0), 1.0) == "", "%s: над укрытием %d свободно" % [name, i])
+				for j in range(i + 1, a.shelters.size()):
+					min_d = minf(min_d, Vector2(s.x, s.z).distance_to(Vector2(a.shelters[j].x, a.shelters[j].z)))
+				# Связь до центра карты достижима: с какой-то разумной высоты видна мачта.
+				var mast := s + Vector3(0, SimConst.MAST_HEIGHT, 0)
+				var seen := false
+				for hgt in [30.0, 60.0, 100.0, 150.0]:
+					if a.line_of_sight(mast, Vector3(0, a.height_at(0, 0) + hgt, 0)):
+						seen = true
+						break
+				t.check(seen, "%s: от укрытия %d есть прямая видимость к центру" % [name, i])
+			t.check(min_d >= Terrain.SHELTER_MIN_DIST, "%s: укрытия не ближе 220 м: %.0f" % [name, min_d])
+
+
+## Метрики рельефа: средняя высота центра, кольца и разброс высот внутри арены.
+func _relief_metrics(tr: Terrain) -> Vector3:
+	var center := 0.0
+	var nc := 0
+	var vals := []
+	for zi in range(0, Terrain.N, 2):
+		for xi in range(0, Terrain.N, 2):
+			var x := -SimConst.MAP_HALF + xi * Terrain.CELL
+			var z := -SimConst.MAP_HALF + zi * Terrain.CELL
+			var rr := Vector2(x, z).length()
+			var h := tr.heights[zi * Terrain.N + xi]
+			if rr < 150.0:
+				center += h
+				nc += 1
+			if rr < 440.0:
+				vals.append(h)
+	var mean := 0.0
+	for v in vals:
+		mean += v
+	mean /= vals.size()
+	var dev := 0.0
+	for v in vals:
+		dev += (v - mean) * (v - mean)
+	return Vector3(center / nc, mean, sqrt(dev / vals.size()))
+
+
+func test_reliefs_differ() -> void:
+	var sig := []
+	for r in MapPreset.RELIEF_COUNT:
+		var tr := Terrain.new()
+		tr.generate(_relief_seed(r))
+		sig.append(_relief_metrics(tr))
+		print("      %s: центр %.0f, средняя %.0f, разброс %.1f" % [tr.preset.title(), sig[r].x, sig[r].y, sig[r].z])
+	for i in sig.size():
+		for j in range(i + 1, sig.size()):
+			var d: Vector3 = (sig[i] - sig[j]).abs()
+			t.check(d.x > 6.0 or d.y > 6.0 or d.z > 3.0, "архетипы %d и %d различаются: %s" % [i, j, d])
+
+
+func test_collide_finds_obstacle_across_grid_cell() -> void:
+	var tr := Terrain.new()
+	tr.generate(77)
+	var found := 0
+	for tree in tr.trees:
+		# Проба радиусом 3 м сбоку от ствола, но уже в соседней ячейке индекса.
+		var p := Vector3(tree.x + tree.z + 2.5, tree.w - 2.0, tree.y)
+		if floori(p.x / Terrain.GRID) == floori(tree.x / Terrain.GRID):
+			continue
+		found += 1
+		t.check(tr.collide(p, 3.0) != "", "проба на границе ячейки задевает дерево")
+		if found >= 5:
+			break
+	t.check(found > 0, "нашлись деревья у границы ячеек")
+
+
 func test_ground_collision_explodes_without_life_loss() -> void:
 	var w := _world()
 	_tick(w, 1.5)
@@ -109,7 +220,7 @@ func test_no_link_makes_drone_fall() -> void:
 	var d := w.drone_of(1)
 	# Уводим дрон за горы — связи нет.
 	var s := w.shelter_pos(w.players[1])
-	d.pos = -s.normalized() * 590.0 + Vector3(0, 0, 0)
+	d.pos = -s.normalized() * (SimConst.MAP_HALF - 10.0)
 	d.pos.y = w.terrain.height_at(d.pos.x, d.pos.z) + 120.0
 	d.signal_q = 0.0
 	var lost := false

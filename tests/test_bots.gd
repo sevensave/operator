@@ -39,3 +39,12 @@ func test_four_bots_finish() -> void:
 		hits += p.hits
 	t.check(hits >= 6, "боты попадают по укрытиям: %d" % hits)
 	print("      4 бота: %.0f с, попаданий %d, победитель %d" % [w.time, hits, w.winner])
+
+
+func test_bots_finish_on_every_relief() -> void:
+	for r in MapPreset.RELIEF_COUNT:
+		var sd := MapPreset.seed_with_relief(300 + r * 11, r)
+		var w := _match(4, 1, sd, 14.0)
+		var name: String = MapPreset.RELIEF_NAMES[r]
+		t.check(w.finished, "%s: матч ботов (коптеры и самолёты) завершился, время %.0f с" % [name, w.time])
+		print("      %s: %.0f с, победитель %d" % [name, w.time, w.winner])

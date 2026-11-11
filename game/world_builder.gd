@@ -128,7 +128,11 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 	fst.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var inner := SimConst.MAP_HALF - 2.0
 	var outer := 4000.0
-	var y := 96.0
+	# Уровень — чуть ниже самой низкой точки края карты (у каждого архетипа свой).
+	var y := INF
+	for i in n:
+		y = minf(y, minf(minf(terrain.heights[i], terrain.heights[(n - 1) * n + i]), minf(terrain.heights[i * n], terrain.heights[i * n + n - 1])))
+	y -= 4.0
 	var rects := [Rect2(-outer, -outer, outer * 2, outer - inner), Rect2(-outer, inner, outer * 2, outer - inner),
 		Rect2(-outer, -inner, outer - inner, inner * 2), Rect2(inner, -inner, outer - inner, inner * 2)]
 	for r in rects:
