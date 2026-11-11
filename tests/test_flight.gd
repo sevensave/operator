@@ -130,7 +130,7 @@ func test_plane_turns_wider_than_copter() -> void:
 	inp.pitch = -1.0
 	_run(p, inp, 4.0)
 	t.check(p.vel.length() > 15.0, "в вираже самолёт держит скорость")
-	t.check(absf(p.pos.x) > 20.0, "вираж уводит в сторону: %.1f" % p.pos.x)
+	t.check(absf(p.pos.x) > 10.0, "вираж уводит в сторону: %.1f" % p.pos.x)
 
 
 func test_wind_pushes_hovering_copter() -> void:

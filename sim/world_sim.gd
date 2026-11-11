@@ -94,6 +94,14 @@ func trigger_trap(pid: int) -> bool:
 	return true
 
 
+## Подрыв своего дрона по команде оператора.
+func detonate(pid: int) -> void:
+	var d := drone_of(pid)
+	if d != null and d.age > 0.6 and d.trapped <= 0.0:
+		_explode(d, "detonate", -1)
+		_check_victory()
+
+
 ## Один тик симуляции. inputs: pid -> DroneInput.
 func step(inputs: Dictionary) -> void:
 	if finished:

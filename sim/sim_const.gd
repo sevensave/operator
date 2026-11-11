@@ -14,7 +14,7 @@ enum Kind { COPTER = 0, PLANE = 1 }
 
 const DRONE_RADIUS := [0.45, 0.9]       # радиус столкновения по типу
 const BLAST_RADIUS := [7.0, 13.0]       # радиус поражения при взрыве
-const SIGNAL_RANGE := [700.0, 1150.0]   # дальность связи
+const SIGNAL_RANGE := [1000.0, 1450.0]   # дальность связи
 
 const SHELTER_HIT_RADIUS := 9.0  # «хитбокс» укрытия, одинаковый для всех видов
 const MAST_HEIGHT := 14.0        # антенна оператора над укрытием
@@ -29,7 +29,7 @@ const NOLINK_FALL := 2.0         # 2 с без сигнала — дрон те�
 
 const JAMMER_RADIUS := 120.0
 const TURRET_RANGE := 170.0
-const TRAP_RADIUS := 48.0
+const TRAP_RADIUS := 36.0
 const TRAP_TIME := 3.0
 const TRAP_COOLDOWN := 25.0
 

@@ -94,11 +94,11 @@ func test_grace_prevents_double_hit() -> void:
 
 func test_signal_drops_with_distance_and_terrain() -> void:
 	var near := SignalModel.distance_quality(50.0, SimConst.Kind.COPTER)
-	var far := SignalModel.distance_quality(650.0, SimConst.Kind.COPTER)
-	var plane_far := SignalModel.distance_quality(650.0, SimConst.Kind.PLANE)
+	var far := SignalModel.distance_quality(900.0, SimConst.Kind.COPTER)
+	var plane_far := SignalModel.distance_quality(900.0, SimConst.Kind.PLANE)
 	t.check(near > 0.95 and far < 0.35, "сигнал падает с расстоянием: %.2f → %.2f" % [near, far])
 	t.check(plane_far > far + 0.3, "у самолёта связь дальше")
-	t.check(SignalModel.jam_factor(Vector3.ZERO, [Vector3(10, 0, 0)]) < 0.3, "глушилка режет сигнал вблизи")
+	t.check(SignalModel.jam_factor(Vector3.ZERO, [Vector3(10, 0, 0)]) < 0.45, "глушилка режет сигнал вблизи")
 	t.check(SignalModel.jam_factor(Vector3.ZERO, [Vector3(500, 0, 0)]) == 1.0, "вдали глушилки нет")
 	t.check(SignalModel.input_delay_ticks(0.1) > 5 and SignalModel.input_delay_ticks(0.9) == 0, "задержка управления при слабом сигнале")
 

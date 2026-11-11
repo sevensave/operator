@@ -45,7 +45,9 @@ static func step(s: DroneState, inp: DroneInput, dt: float, air: Vector3) -> voi
 
 	# Флюгерная устойчивость: нос сам тянется за потоком.
 	target.x += -(alpha - 0.05) * 2.2
-	target.y += vr * 0.04
+	target.y += -vr * 0.08
+	if powered and not inp.acro:
+		target.y += -asin(clampf(-right.y, -1.0, 1.0)) * 0.45   # координированный разворот
 	s.angvel = s.angvel.lerp(target, 1.0 - exp(-RATE_RESPONSE * dt))
 	var ang := s.angvel.length() * dt
 	if ang > 0.000001:

@@ -2,10 +2,10 @@ class_name SignalModel
 ## Качество связи дрона со своим оператором (0..1).
 ## Падает с расстоянием, без прямой видимости до своей антенны и в куполе чужой глушилки.
 
-const LOS_PENALTY := 0.42
-const JAM_FLOOR := 0.16
-const LAG_START := 0.38      # ниже — задержка и «залипание» управления
-const NOLINK := 0.12         # ниже — связи нет совсем
+const LOS_PENALTY := 0.55
+const JAM_FLOOR := 0.4
+const LAG_START := 0.32      # ниже — задержка и «залипание» управления
+const NOLINK := 0.08         # ниже — связи нет совсем
 
 
 static func distance_quality(dist: float, kind: int) -> float:
