@@ -137,9 +137,14 @@ func _step_pred(inp: DroneInput) -> void:
 		FlightCopter.step(_pred, inp, SimConst.DT, air)
 
 
-## Самый свежий снапшот дронов (для автопилота).
+## Самый свежий снапшот дронов (для автопилота и автозахвата).
 func latest_drones() -> Dictionary:
 	return _snaps[_snaps.size() - 1].drones if _snaps.size() > 0 else {}
+
+
+## Свой дрон, как его видит предсказание (для помощи пилоту: на нём же шагает _step_pred).
+func predicted_drone() -> DroneState:
+	return _pred
 
 
 func on_events(list: Array) -> void:

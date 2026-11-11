@@ -18,6 +18,7 @@ var _pending_trap := false
 var _pending_detonate := false
 var ping_ms := 0.0
 var autopilot: BotAI   # для проверки: своим дроном управляет бот
+var manual_override := false   # автопилот уступает вводу клиента (идёт автозахват)
 
 
 func start(seed: int, roster: Array, lives: int, my: int) -> void:
@@ -75,7 +76,7 @@ func update(delta: float, input: DroneInput) -> void:
 		if _pending_detonate:
 			world.detonate(my_pid)
 			_pending_detonate = false
-		var inputs := {my_pid: input if autopilot == null else autopilot.think(world)}
+		var inputs := {my_pid: input if autopilot == null or manual_override else autopilot.think(world)}
 		for pid in bots:
 			inputs[pid] = bots[pid].think(world)
 		_prev = _cur
@@ -87,6 +88,16 @@ func update(delta: float, input: DroneInput) -> void:
 			game_event.emit(ev)
 	if acc > SimConst.DT:
 		acc = 0.0
+
+
+## Авторитетные состояния дронов (для автозахвата).
+func latest_drones() -> Dictionary:
+	return world.drones
+
+
+## Свой дрон в симуляции (для помощи пилоту).
+func predicted_drone() -> DroneState:
+	return world.drone_of(my_pid)
 
 
 ## Интерполированные состояния дронов на текущий кадр.

@@ -357,6 +357,24 @@ func collide(p: Vector3, r: float) -> String:
 	return ""
 
 
+## Верхушка самого высокого дерева или постройки в радиусе r от точки (x, z); нет — −INF.
+## Для помощи высоты: насколько подняться, чтобы пройти над препятствием.
+func obstacle_top(x: float, z: float, r: float) -> float:
+	var top := -INF
+	var k := int(floor(x / GRID)) * 4096 + int(floor(z / GRID))
+	if _tree_grid.has(k):
+		for i in _tree_grid[k]:
+			var t := trees[i]
+			if Vector2(x - t.x, z - t.y).length() < t.z + r:
+				top = maxf(top, t.w)
+	if _box_grid.has(k):
+		for i in _box_grid[k]:
+			var b := boxes[i]
+			if x > b.position.x - r and x < b.end.x + r and z > b.position.z - r and z < b.end.z + r:
+				top = maxf(top, b.end.y)
+	return top
+
+
 ## Есть ли прямая видимость между точками (рельеф и постройки, лес не мешает).
 func line_of_sight(a: Vector3, b: Vector3) -> bool:
 	var d := b - a

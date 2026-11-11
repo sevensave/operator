@@ -83,6 +83,7 @@ func _draw() -> void:
 	_draw_targets(k)
 	if flying:
 		_draw_instruments(k)
+		_draw_lock(k)
 	_draw_warnings(k)
 	_draw_bottom(k)
 
@@ -162,6 +163,7 @@ func _draw_feed(k: float) -> void:
 
 
 ## Чужие дроны: рамка цвета стороны, дистанция, точка упреждения; за краем экрана — стрелка.
+## Захваченная цель — ромб с кольцом и сплошной линией к точке встречи, кандидат — метка [R].
 func _draw_targets(k: float) -> void:
 	var fast := fmod(_blink, 0.24) < 0.12
 	for m in data.get("targets", []):
@@ -176,11 +178,19 @@ func _draw_targets(k: float) -> void:
 			_s("%d" % int(dist), p - dir * 30 * k + Vector2(-30 * k, 5 * k), int(14 * k), col, HORIZONTAL_ALIGNMENT_CENTER, 60 * k, UiTheme.mono())
 			continue
 		var hot: bool = m.hot
+		var locked: bool = m.get("locked", false)
 		var c := Color.WHITE if (hot and fast) else col
 		var s := clampf(1100.0 / maxf(dist, 1.0), 13.0, 46.0) * k
 		var g := s * 0.45
 		var lw := maxf(2.0, (3.0 if hot else 2.0) * k)
-		for sx: float in [-1.0, 1.0]:
+		if locked:
+			_draw_lock_frame(p, s, c, lw, k)
+		elif m.get("cand", false):
+			var tag := "[R]"
+			var tr := Rect2(p.x + s + 6 * k, p.y - 11 * k, _w(tag, int(14 * k), UiTheme.bold()) + 12 * k, 22 * k)
+			_plate(tr, 0.85)
+			_s(tag, tr.position + Vector2(6 * k, 16 * k), int(14 * k), UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.bold())
+		for sx: float in ([] if locked else [-1.0, 1.0]):
 			for sy: float in [-1.0, 1.0]:
 				var corner := p + Vector2(sx, sy) * s
 				draw_line(corner + Vector2(0, 1.5 * sy), corner - Vector2(sx * g, 0) + Vector2(0, 1.5 * sy), Color(0, 0, 0, 0.6), lw + 2.0)
@@ -190,12 +200,50 @@ func _draw_targets(k: float) -> void:
 			draw_arc(p, s * 1.5, 0, TAU, 28, c, lw)
 		var txt := "%s  %d м" % [m.label, int(dist)]
 		_s(txt, Vector2(p.x - 100 * k, p.y - s - 8 * k), int(14 * k), col, HORIZONTAL_ALIGNMENT_CENTER, 200 * k, UiTheme.bold())
-		if m.has("lead"):
+		if m.has("lead") and locked:
+			var lp: Vector2 = m.lead
+			var lc := UiTheme.ACCENT
+			if lp.distance_to(p) > s * 0.6:
+				draw_line(p + (lp - p).normalized() * s * 0.6, lp, Color(0, 0, 0, 0.5), 4.0)
+				draw_line(p + (lp - p).normalized() * s * 0.6, lp, lc, 2.0)
+			var d := 8.0 * k
+			draw_circle(lp, 2.5 * k, lc)
+			draw_arc(lp, d, 0, TAU, 20, Color(0, 0, 0, 0.5), 4.0)
+			draw_arc(lp, d, 0, TAU, 20, lc, 2.0)
+		elif m.has("lead"):
 			var lp: Vector2 = m.lead
 			if lp.distance_to(p) > s * 0.8:
 				draw_line(p + (lp - p).normalized() * s * 0.5, lp, Color(col, 0.55), 1.5)
 				var d := 6.0 * k
 				draw_polyline(PackedVector2Array([lp + Vector2(0, -d), lp + Vector2(d, 0), lp + Vector2(0, d), lp + Vector2(-d, 0), lp + Vector2(0, -d)]), col, 2.0)
+
+
+## Рамка захваченной цели: двойное кольцо с вращающимися засечками внутрь —
+## не путается ни с обычной рамкой, ни с ромбом укрытия.
+func _draw_lock_frame(p: Vector2, s: float, c: Color, lw: float, k: float) -> void:
+	var r := s * 1.2
+	for col: Color in [Color(0, 0, 0, 0.6), c]:
+		var w := lw + (2.0 if col.a < 0.99 else 0.0)
+		draw_arc(p, r, 0, TAU, 36, col, w)
+	draw_arc(p, r + 6 * k, 0, TAU, 36, Color(UiTheme.ACCENT, 0.7), maxf(1.0, k))
+	var a0 := _blink * 1.6
+	for i in 4:
+		var dir := Vector2.from_angle(a0 + i * TAU / 4.0)
+		draw_line(p + dir * (r + 12 * k), p + dir * (r - 7 * k), Color(0, 0, 0, 0.6), lw + 2.0)
+		draw_line(p + dir * (r + 12 * k), p + dir * (r - 7 * k), UiTheme.ACCENT, lw)
+
+
+## Плашка автозахвата под прицелом.
+func _draw_lock(k: float) -> void:
+	if not data.has("lock"):
+		return
+	var lk: Dictionary = data.lock
+	var fs := int(17 * k)
+	var txt := "АВТОЗАХВАТ · %s · %d м · [R] отмена" % [lk.name, int(lk.dist)]
+	var tw := _w(txt, fs, UiTheme.caps()) + 40 * k
+	var r := Rect2((size.x - tw) / 2, size.y * 0.5 + 52 * k, tw, 32 * k)
+	_plate(r, 1.0, lk.color)
+	_s(txt, Vector2(r.position.x + 22 * k, r.position.y + 22 * k), fs, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.caps())
 
 
 func _draw_instruments(k: float) -> void:
@@ -335,7 +383,7 @@ func _draw_bottom(k: float) -> void:
 		return
 	var sz := size
 	var c := UiTheme.OSD
-	var w := 600 * k
+	var w := 790 * k
 	var r := Rect2((sz.x - w) / 2, sz.y - 70 * k, w, 46 * k)
 	_plate(r)
 	var y := r.position.y + 29 * k
@@ -363,6 +411,15 @@ func _draw_bottom(k: float) -> void:
 		draw_rect(Rect2(x + 76 * k, y - 9 * k, bw, 6 * k), Color(c, 0.2))
 		draw_rect(Rect2(x + 76 * k, y - 9 * k, bw * (1.0 - trap / SimConst.TRAP_COOLDOWN), 6 * k), UiTheme.ACCENT)
 		_s("%d с" % int(ceil(trap)), Vector2(x + 144 * k, y + 1 * k), int(14 * k), UiTheme.DIM, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.mono())
+	draw_rect(Rect2(x + 178 * k, r.position.y + 10 * k, 1, r.size.y - 20 * k), UiTheme.LINE)
+	x += 196 * k
+	_kick("ЗАХВАТ [R]", Vector2(x, y))
+	if data.get("lock_on", false):
+		_s("ведёт", Vector2(x + 92 * k, y + 2 * k), int(17 * k), UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.bold())
+	elif data.get("lock_ready", false):
+		_s("цель", Vector2(x + 92 * k, y + 2 * k), int(17 * k), UiTheme.GOOD, HORIZONTAL_ALIGNMENT_LEFT, -1, UiTheme.bold())
+	else:
+		_s("нет цели", Vector2(x + 92 * k, y + 2 * k), int(17 * k), UiTheme.DIM)
 
 
 func _draw_table(k: float) -> void:

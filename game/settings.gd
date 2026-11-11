@@ -11,6 +11,7 @@ var fov := 100.0
 var mouse_sens := 1.0
 var invert_y := false
 var acro := false
+var alt_assist := true      # коптер в аркаде сам держит запас высоты над рельефом
 var volume := 0.8
 var camera_tilt := 18.0
 var server_host := ""       # пусто — адрес по умолчанию из net/config.gd
@@ -43,6 +44,7 @@ func load_settings() -> void:
 	mouse_sens = float(c.get_value("control", "mouse_sens", mouse_sens))
 	invert_y = bool(c.get_value("control", "invert_y", invert_y))
 	acro = bool(c.get_value("control", "acro", acro))
+	alt_assist = bool(c.get_value("control", "alt_assist", alt_assist))
 	volume = float(c.get_value("audio", "volume", volume))
 	server_host = str(c.get_value("net", "host", server_host))
 	server_port = int(c.get_value("net", "port", server_port))
@@ -63,6 +65,7 @@ func save() -> void:
 	c.set_value("control", "mouse_sens", mouse_sens)
 	c.set_value("control", "invert_y", invert_y)
 	c.set_value("control", "acro", acro)
+	c.set_value("control", "alt_assist", alt_assist)
 	c.set_value("audio", "volume", volume)
 	if server_host != "":
 		c.set_value("net", "host", server_host)

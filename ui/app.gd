@@ -869,13 +869,17 @@ func show_settings() -> void:
 	acro.text = "Режим «акро» (без автовыравнивания)"
 	acro.button_pressed = Settings.acro
 	box.add_child(acro)
+	var alt := CheckButton.new()
+	alt.text = "Помощь высоты коптера (газ в центре — держит запас над рельефом)"
+	alt.button_pressed = Settings.alt_assist
+	box.add_child(alt)
 	var vol := _slider(0, 1, Settings.volume, 0.05)
 	_row(box, "Громкость", vol)
 	var host := LineEdit.new()
 	host.text = Settings.server_host
 	host.placeholder_text = "по умолчанию: %s" % NetConfig.DEFAULT_HOST
 	_row(box, "Адрес сервера", host)
-	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв (сбивает и чужие дроны рядом), F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, X — сеть, LB/RB — тип дрона.", 15, UiTheme.DIM)
+	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв (сбивает и чужие дроны рядом), R — автозахват чужого дрона под прицелом (повторно или движение ручек — отмена), F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, Y — автозахват, X — сеть, LB/RB — тип дрона. Помощь высоты: у коптера в аркаде с газом в центре дрон сам держит запас над рельефом и деревьями; газ вниз — отключить.", 15, UiTheme.DIM)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(help)
 	_actions(box, [UiTheme.primary("Сохранить", func():
@@ -888,6 +892,7 @@ func show_settings() -> void:
 		Settings.mouse_sens = sens.value
 		Settings.invert_y = inv.button_pressed
 		Settings.acro = acro.button_pressed
+		Settings.alt_assist = alt.button_pressed
 		Settings.volume = vol.value
 		var hs := host.text.strip_edges()
 		if hs.contains(":"):

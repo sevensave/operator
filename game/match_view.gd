@@ -34,6 +34,18 @@ var _was_flying := false
 var autopilot: BotAI          # отладка: дроном управляет бот (флаг --autopilot)
 var _autopilot_rw: RemoteWorld
 var _precip: GPUParticles3D      # дождь/снег вокруг камеры (косметика пресета)
+## Автозахват: дрон сам идёт на перехват чужого дрона, пока игрок не отменит.
+const LOCK_CONE := deg_to_rad(35.0)   # кандидат — не дальше этого угла от оси взгляда
+const LOCK_PICK_RANGE := 400.0
+const LOCK_LOSE_RANGE := 600.0
+const LOCK_GROW_TIME := 3.0           # дистанция растёт столько секунд подряд — цель потеряна
+const LOCK_BREAK_STICK := 0.35        # ручка отклонена сильнее — ручное управление
+var _lock_id := 0           # id дрона-цели, 0 — нет захвата
+var _lock_cand := 0         # кандидат под прицелом (по прошлому кадру)
+var _lock_armed := false    # ручки побывали в центре после захвата — теперь их движение отменяет
+var _lock_dist := 0.0
+var _lock_grow := 0.0
+var _autolock := OS.get_cmdline_user_args().has("--autolock")   # отладка: захват ближайшего сам
 var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры для арта: вид сзади
 ## Кадры для арта: при --chase/--cinematic убрать FPV-эффекты (линза, зерно, сканлайны).
 var _clean := OS.get_cmdline_user_args().has("--clean") and (_chase_mode or OS.get_cmdline_user_args().has("--cinematic"))
@@ -107,6 +119,7 @@ func _ready() -> void:
 	osd.push_line("Карта: %s" % map_title(), UiTheme.ACCENT)
 	osd.push_line("W/S — газ, A/D — поворот, мышь или стрелки — наклон", UiTheme.DIM)
 	osd.push_line("Shift — форсаж, Пробел — подрыв (сбивает и дроны рядом), F — сеть, Tab — таблица", UiTheme.DIM)
+	osd.push_line("R — автозахват чужого дрона под прицелом, повторно или ручками — отмена", UiTheme.DIM)
 
 
 ## «Каньон · закат · сильный ветер» — архетип и всё, что заметно игроку.
@@ -148,6 +161,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_set_kind(SimConst.Kind.PLANE)
 			KEY_TAB:
 				osd.show_table = true
+			KEY_R:
+				_toggle_lock()
 			KEY_C:
 				Settings.acro = not Settings.acro
 				osd.push_line("Режим: %s" % ("акро" if Settings.acro else "аркада"), UiTheme.ACCENT)
@@ -169,6 +184,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_next_spectate()
 			JOY_BUTTON_X:
 				feed.trap()
+			JOY_BUTTON_Y:
+				_toggle_lock()
 			JOY_BUTTON_LEFT_SHOULDER:
 				_set_kind(SimConst.Kind.COPTER)
 			JOY_BUTTON_RIGHT_SHOULDER:
@@ -177,6 +194,91 @@ func _unhandled_input(event: InputEvent) -> void:
 				_toggle_menu()
 			JOY_BUTTON_BACK:
 				osd.show_table = not osd.show_table
+
+
+## R / геймпад Y: захватить чужой дрон под прицелом или снять захват.
+func _toggle_lock() -> void:
+	if _lock_id != 0:
+		_drop_lock("Автозахват снят", UiTheme.DIM)
+	elif _lock_cand != 0 and _my_drone_alive() and not menu_open:
+		_start_lock(_lock_cand)
+	else:
+		osd.push_line("Нет цели для захвата", UiTheme.DIM)
+
+
+func _start_lock(id: int) -> void:
+	var tg := _lock_target(id)
+	var own: DroneState = feed.predicted_drone()
+	if tg == null or own == null:
+		return
+	_lock_id = id
+	_lock_armed = false
+	_lock_grow = 0.0
+	_lock_dist = own.pos.distance_to(tg.pos)
+	osd.push_line("Автозахват: дрон %s — [R] отмена" % _name(tg.owner), UiTheme.ACCENT)
+	_beep(740.0, 0.08)
+
+
+func _drop_lock(msg: String, col := UiTheme.WARN) -> void:
+	if _lock_id == 0:
+		return
+	_lock_id = 0
+	if msg != "":
+		osd.push_line(msg, col)
+
+
+## Цель захвата: свежее состояние (снапшот или мир), а не отстающая интерполяция.
+## По сети снапшот старше своего предсказания примерно на пинг — досчитываем по скорости.
+func _lock_target(id := -1) -> DroneState:
+	var o: DroneState = feed.latest_drones().get(_lock_id if id < 0 else id)
+	if o == null:
+		return null
+	if feed is FeedNet and feed.ping_ms > 0.0:
+		o = o.clone()
+		o.pos += o.vel * clampf(feed.ping_ms * 0.001, 0.0, 0.3)
+	return o
+
+
+## Срывы захвата: ручки, цель уничтожена или ушла, свой дрон без управления.
+func _update_lock(raw: DroneInput, own: DroneState, delta: float) -> void:
+	if _lock_id == 0:
+		return
+	if own == null:
+		_drop_lock("")   # свой дрон потерян — причину уже показало событие взрыва
+		return
+	if own.trapped > 0.0:
+		_drop_lock("Захват сорван: дрон в сети")
+		return
+	if not own.control:
+		_drop_lock("Захват сорван: нет связи")
+		return
+	var tg := _lock_target()
+	if tg == null:
+		_drop_lock("Цель уничтожена", UiTheme.ACCENT)
+		return
+	var dev := maxf(maxf(absf(raw.pitch), absf(raw.roll)), maxf(absf(raw.yaw), absf(raw.throttle)))
+	if dev < LOCK_BREAK_STICK:
+		_lock_armed = true
+	elif _lock_armed:
+		_drop_lock("Автозахват снят: ручное управление", UiTheme.DIM)
+		return
+	var dist := own.pos.distance_to(tg.pos)
+	_lock_grow = _lock_grow + delta if dist > _lock_dist else 0.0
+	_lock_dist = dist
+	if dist > LOCK_LOSE_RANGE or _lock_grow >= LOCK_GROW_TIME:
+		_drop_lock("Цель потеряна")
+
+
+## --autolock: захватить ближайший чужой дрон в радиусе без оглядки на прицел (для съёмки).
+func _auto_pick(own: DroneState) -> void:
+	var best := 0
+	var best_d := LOCK_PICK_RANGE
+	for o: DroneState in feed.latest_drones().values():
+		if o.owner != feed.my_pid and own.pos.distance_to(o.pos) < best_d:
+			best_d = own.pos.distance_to(o.pos)
+			best = o.id
+	if best != 0:
+		_start_lock(best)
 
 
 func _set_kind(k: int) -> void:
@@ -191,12 +293,26 @@ func _my_drone_alive() -> bool:
 
 
 func _process(delta: float) -> void:
-	var inp := controls.sample(delta, Settings.acro)
+	var raw := controls.sample(delta, Settings.acro)
+	var inp := raw
 	if menu_open:
 		inp = DroneInput.new()
 		inp.seq = controls.seq
 		inp.acro = Settings.acro
-	if autopilot != null:
+	var own: DroneState = feed.predicted_drone() if _my_drone_alive() else null
+	if _autolock and _lock_id == 0 and own != null and not menu_open:
+		_auto_pick(own)
+	_update_lock(raw, own, delta)
+	if _lock_id != 0:
+		inp = PilotAssist.pursue(own, _lock_target(), feed.terrain)
+		inp.seq = controls.seq
+		inp.acro = false
+	elif own != null and Settings.alt_assist and not inp.acro and own.kind == SimConst.Kind.COPTER and absf(inp.throttle) < 0.1:
+		inp.throttle = PilotAssist.alt_hold_throttle(own, inp.throttle, feed.terrain)
+		inp.pitch = PilotAssist.alt_hold_pitch(own, inp.pitch, feed.terrain)
+	if feed is FeedLocal:
+		feed.manual_override = _lock_id != 0
+	if autopilot != null and _lock_id == 0:
 		if feed is FeedNet:
 			if _autopilot_rw == null:
 				_autopilot_rw = RemoteWorld.new()
@@ -424,6 +540,9 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 	var view := Rect2(Vector2.ZERO, osd.size).grow(-30.0)
 	var at_home := false
 	var hot_any := false
+	var cam_fwd := -cam.global_transform.basis.z
+	var cand := 0
+	var cand_ang := LOCK_CONE
 	for o: DroneState in drones.values():
 		if o.owner == feed.my_pid:
 			continue
@@ -434,17 +553,28 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 			continue
 		var hot: bool = d != null and dist < SimConst.INTERCEPT_BLAST[d.kind] * 0.9
 		hot_any = hot_any or hot
-		var m := {"color": _color(o.owner), "label": "дрон " + _name(o.owner), "dist": dist, "hot": hot, "on": false}
+		var m := {"color": _color(o.owner), "label": "дрон " + _name(o.owner), "dist": dist, "hot": hot, "on": false,
+			"locked": o.id == _lock_id, "id": o.id}
+		if d != null and dist < LOCK_PICK_RANGE:
+			var ang := cam_fwd.angle_to(o.pos - cam.global_position)
+			if ang < cand_ang:
+				cand_ang = ang
+				cand = o.id
 		var behind := cam.is_position_behind(o.pos)
 		var sc := Vector2.ZERO if behind else cam.unproject_position(o.pos)
 		if not behind and view.has_point(sc):
 			m.on = true
 			m.pos = sc
-			if d != null and dist < 450.0 and dist > 8.0:
+			if d != null and o.id == _lock_id:
+				var tg := _lock_target()
+				var lp := PilotAssist.lead_point(d, tg if tg != null else o)
+				if not cam.is_position_behind(lp):
+					m.lead = cam.unproject_position(lp)
+			elif d != null and dist < 450.0 and dist > 8.0:
 				var lead := o.pos + o.vel * (dist / maxf(my_speed, 20.0))
 				if not cam.is_position_behind(lead):
 					m.lead = cam.unproject_position(lead)
-		elif dist < 400.0:
+		elif dist < 400.0 or o.id == _lock_id:
 			var loc := cam.global_transform.affine_inverse() * o.pos
 			var dir := Vector2(loc.x, -loc.y)
 			dir = dir.normalized() if dir.length() > 0.001 else Vector2.DOWN
@@ -454,7 +584,16 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 		else:
 			continue
 		targets.append(m)
+	_lock_cand = cand
+	for m in targets:
+		m.cand = _lock_id == 0 and m.id == cand
 	data.targets = targets
+	data.lock_ready = d != null and (cand != 0 or _lock_id != 0)
+	data.lock_on = _lock_id != 0
+	if _lock_id != 0:
+		var tg := _lock_target()
+		if tg != null:
+			data.lock = {"name": _name(tg.owner), "dist": ref.distance_to(tg.pos), "color": _color(tg.owner)}
 	if hot_any:
 		warns.append(["ЦЕЛЬ РЯДОМ — ПОДРЫВ [ПРОБЕЛ]", true])
 	if at_home and me.trap_cd <= 0.0 and not feed.sudden_death():
@@ -605,7 +744,8 @@ func _on_event(ev: Dictionary) -> void:
 				_ruin_shelter(n2)
 		"ram":
 			osd.push_line("Перехват: %s и %s" % [_name(ev.a), _name(ev.b)], UiTheme.TEXT)
-			if ev.a == feed.my_pid:
+			# a — меньший pid пары (у ботов pid < 0), так что свой дрон может быть и в b.
+			if ev.a == feed.my_pid or ev.b == feed.my_pid:
 				_beep(990.0, 0.1)
 		"caught":
 			osd.push_line("%s поймал сетью дрон %s" % [_name(ev.pid), _name(ev.victim)], _color(ev.pid))
@@ -642,6 +782,8 @@ func _beep(f: float, d: float) -> void:
 
 func _toggle_menu() -> void:
 	menu_open = not menu_open
+	if menu_open:
+		_drop_lock("Автозахват снят: меню", UiTheme.DIM)
 	pause_menu.visible = menu_open
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if menu_open else Input.MOUSE_MODE_CAPTURED
 
@@ -667,5 +809,16 @@ func _build_pause_menu() -> Control:
 	box.add_child(UiTheme.button("Режим: аркада / акро (C)", func():
 		Settings.acro = not Settings.acro
 		osd.push_line("Режим: %s" % ("акро" if Settings.acro else "аркада"), UiTheme.ACCENT)))
+	var alt_text := func(): return "Помощь высоты коптера: %s" % ("вкл" if Settings.alt_assist else "выкл")
+	var alt_btn := UiTheme.button(alt_text.call(), func(): pass)
+	alt_btn.pressed.connect(func():
+		Settings.alt_assist = not Settings.alt_assist
+		Settings.save()
+		alt_btn.text = alt_text.call()
+		osd.push_line("Помощь высоты: %s" % ("вкл" if Settings.alt_assist else "выкл"), UiTheme.ACCENT))
+	box.add_child(alt_btn)
+	var hint := UiTheme.label("R / геймпад Y — автозахват чужого дрона под прицелом; повторно или движение ручек — отмена. Пробел — подрыв.", 15, UiTheme.DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hint)
 	box.add_child(UiTheme.button("Выйти из матча", func(): leave_requested.emit()))
 	return root

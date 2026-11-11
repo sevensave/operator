@@ -60,7 +60,7 @@ func think(w: WorldSim) -> DroneInput:
 			if o.owner == pid:
 				continue
 			if o.pos.distance_to(home) < 160.0 and o.pos.distance_to(d.pos) < 220.0:
-				aim = o.pos + o.vel * clampf(o.pos.distance_to(d.pos) / 30.0, 0.0, 2.0)
+				aim = PilotAssist.lead_point(d, o)
 				intercept = true
 				break
 	if not intercept:
@@ -129,47 +129,15 @@ func think(w: WorldSim) -> DroneInput:
 		weave = sin(t * 2.4 + _weave_phase) * (0.5 + 0.4 * skill)
 	var sloppy := (1.0 - skill) * 0.25
 
+	var speed := 30.0
+	if intercept:
+		speed = 34.0
+	elif steep > 0.3:
+		speed *= clampf(0.3 / steep, 0.3, 1.0)   # крутой склон впереди — притормаживаем и набираем
+	inp = PilotAssist.steer_to(d, flat, alt, aim.y, speed, weave, sin(t * 3.0 + pid) * sloppy)
 	if d.kind == SimConst.Kind.COPTER:
-		var fwd := d.forward()
-		fwd.y = 0
-		fwd = fwd.normalized()
-		var right := Vector3(-fwd.z, 0, fwd.x)
-		var want_dir := flat.normalized() if dist > 0.5 else fwd
-		var heading_err := atan2(fwd.cross(want_dir).y, fwd.dot(want_dir))
-		inp.yaw = clampf(-heading_err * 2.0, -1, 1)
-		var speed := 30.0
-		if intercept:
-			speed = 34.0
-		elif steep > 0.3:
-			speed *= clampf(0.3 / steep, 0.3, 1.0)   # крутой склон впереди — притормаживаем и набираем
-		var v_des := want_dir * speed + right * weave * 10.0
-		var v_fwd := d.vel.dot(fwd)
-		var v_right := d.vel.dot(right)
-		inp.pitch = clampf((v_des.dot(fwd) - v_fwd) * 0.12, -1, 1)
-		inp.roll = clampf((v_des.dot(right) - v_right) * 0.12 + sin(t * 3.0 + pid) * sloppy, -1, 1)
-		inp.throttle = _vthrottle((alt - d.pos.y) * 0.3 - d.vel.y * 0.05)
 		inp.boost = (dist < 160.0 and dist > 25.0) or intercept
-		if absf(heading_err) > 1.2:
-			inp.pitch *= 0.3
 	else:
-		var fwd := d.forward()
-		var flat_fwd := Vector3(fwd.x, 0, fwd.z).normalized()
-		var want_dir := flat.normalized() if dist > 0.5 else flat_fwd
-		var heading_err := atan2(flat_fwd.cross(want_dir).y, flat_fwd.dot(want_dir))
-		var right := d.rot * Vector3.RIGHT
-		var bank := asin(clampf(-right.y, -1, 1))   # >0 — крен вправо
-		var bank_des := clampf(-heading_err * 1.4 + weave * 0.4, -0.85, 0.85)
-		inp.roll = clampf((bank_des - bank) * 2.2, -1, 1)
-		var vdir := d.vel.normalized() if d.vel.length() > 1.0 else fwd
-		var fpa := asin(clampf(vdir.y, -1, 1))
-		var climb_des := clampf((alt - d.pos.y) * 0.03, -0.35, 0.4)
-		if dist < 90.0:
-			climb_des = clampf(atan2(aim.y - d.pos.y, dist), -1.0, 0.3)
-		var p_cmd := (fpa - climb_des) * 1.8
-		if absf(bank) > 0.35:
-			p_cmd = minf(p_cmd, 0.0) - absf(bank) * 0.5  # в крене только тянем на себя
-		inp.pitch = clampf(p_cmd, -0.8, 0.7)
-		inp.throttle = 1.0
 		inp.boost = dist < 220.0
 	return inp
 
@@ -181,10 +149,8 @@ func _hover(d: DroneState, w: WorldSim) -> DroneInput:
 	return inp
 
 
-## Боты настроены на прежний линейный газ (±1 → ±10 м/с). Снижение в аркаде стало
-## быстрее и нелинейным — переводим их команду в ту же вертикальную скорость.
 static func _vthrottle(cmd: float) -> float:
-	return FlightCopter.throttle_for_vspeed(clampf(cmd, -1.0, 1.0) * 10.0)
+	return PilotAssist.vthrottle(cmd)
 
 
 func _pick_target(w: WorldSim, me: PlayerSim) -> void:
