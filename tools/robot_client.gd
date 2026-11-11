@@ -38,7 +38,7 @@ func _initialize() -> void:
 		net.feed.game_event.connect(func(_e): events += 1)
 		print("[%s] матч начался, участников %d" % [_n(), net.feed.players.size()]))
 	net.match_ended.connect(_on_end)
-	net.chat.connect(func(m): if str(m.get("text", "")).begins_with("ping"): print("[%s] чат: %s" % [_n(), m.text]))
+	net.chat.connect(func(m): if str(m.get("text", "")).begins_with("на связи"): print("[%s] чат: %s" % [_n(), m.text]))
 	net.connect_server(args.get("name", "Робот"))
 
 
@@ -49,7 +49,7 @@ func _n() -> String:
 func _on_online(id: int) -> void:
 	print("[%s] на связи, id %d" % [_n(), id])
 	if args.has("create"):
-		net.send(Proto.CREATE, {"title": "Смоук", "public": true, "slots": int(args.get("slots", "8")),
+		net.send(Proto.CREATE, {"title": args.get("title", "Смоук"), "public": true, "slots": int(args.get("slots", "8")),
 			"lives": int(args.get("lives", "2")), "bots": true})
 	else:
 		var code := ""
@@ -75,7 +75,7 @@ func _on_room(st: Dictionary) -> void:
 		return
 	if not args.has("create") and not ready_sent:
 		ready_sent = true
-		net.send(Proto.CHAT, {"text": "ping от %s" % _n()})
+		net.send(Proto.CHAT, {"text": "на связи, готов к вылету"})
 		net.send(Proto.LOADOUT, {"style": 2, "kind": 1})
 		net.send(Proto.READY, {"ready": true})
 	if args.has("create") and not started:

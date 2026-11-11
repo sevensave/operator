@@ -33,6 +33,7 @@ var _last_input := DroneInput.new()
 var _was_flying := false
 var autopilot: BotAI          # отладка: дроном управляет бот (флаг --autopilot)
 var _autopilot_rw: RemoteWorld
+var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры для арта: вид сзади
 
 
 func setup(p_feed, p_quality: int) -> void:
@@ -95,6 +96,8 @@ func _ready() -> void:
 	_own_wind = _player(SoundBank.noise_loop("wind"), -14.0)
 	_own_static = _player(SoundBank.noise_loop("static"), -40.0)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if OS.get_cmdline_user_args().has("--cinematic"):   # кадры для арта: без OSD
+		osd.visible = false
 	osd.push_line("W/S — газ, A/D — поворот, мышь или стрелки — наклон", UiTheme.DIM)
 	osd.push_line("Shift — форсаж, Пробел — подрыв, F — сеть, Tab — таблица", UiTheme.DIM)
 
@@ -197,7 +200,9 @@ func _process(delta: float) -> void:
 		mine = drones.get(me.drone_id)
 	hit_flash = maxf(0.0, hit_flash - delta * 2.5)
 	shake = maxf(0.0, shake - delta * 2.0)
-	if mine != null:
+	if mine != null and _chase_mode:
+		_chase_camera(mine, delta)
+	elif mine != null:
 		_fpv_camera(mine, delta)
 		if not _was_flying:
 			spectate_pid = 0
@@ -234,7 +239,7 @@ func _sync_drones(drones: Dictionary, delta: float) -> void:
 			drone_views[id] = v
 		v.global_position = d.pos
 		v.quaternion = d.rot
-		v.visible = id != my_id
+		v.visible = id != my_id or _chase_mode
 		v.update_visual(d.thrust_frac, delta)
 
 
@@ -249,6 +254,16 @@ func _fpv_camera(d: DroneState, delta: float) -> void:
 	cam.global_transform = Transform3D(basis, d.pos + offset + jitter)
 	cam.fov = lerpf(cam.fov, Settings.fov + (6.0 if _last_input.boost else 0.0), delta * 4.0)
 	_chase_pos = cam.global_position
+
+
+func _chase_camera(d: DroneState, delta: float) -> void:
+	cam.fov = 70.0
+	var back := -d.vel.normalized() if d.vel.length() > 2.0 else -d.forward()
+	var want := d.pos + back * 7.0 + Vector3(0, 2.2, 0)
+	want.y = maxf(want.y, feed.terrain.height_at(want.x, want.z) + 1.5)
+	_chase_pos = want if _chase_pos == Vector3.ZERO else _chase_pos.lerp(want, clampf(delta * 5.0, 0.0, 1.0))
+	cam.global_position = _chase_pos
+	cam.look_at(d.pos + d.vel * 0.6 + Vector3(0, 0.5, 0), Vector3.UP)
 
 
 func _next_spectate() -> void:
