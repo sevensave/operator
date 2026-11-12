@@ -20,6 +20,8 @@ var last_kind := 0
 var last_style := 0
 var last_model := 0
 var show_fps := false
+var camera_filter := 2      # фильтр «камеры дрона»: 0 — выкл, 1 — слабый, 2 — полный
+var render_scale := 1.0     # масштаб 3D-рендера (0,5–1,0; ниже 1 — FSR)
 
 
 func _ready() -> void:
@@ -40,6 +42,8 @@ func load_settings() -> void:
 	vsync = bool(c.get_value("video", "vsync", vsync))
 	fov = float(c.get_value("video", "fov", fov))
 	show_fps = bool(c.get_value("video", "show_fps", show_fps))
+	camera_filter = clampi(int(c.get_value("video", "camera_filter", camera_filter)), 0, 2)
+	render_scale = clampf(float(c.get_value("video", "render_scale", render_scale)), 0.5, 1.0)
 	camera_tilt = float(c.get_value("control", "camera_tilt", camera_tilt))
 	mouse_sens = float(c.get_value("control", "mouse_sens", mouse_sens))
 	invert_y = bool(c.get_value("control", "invert_y", invert_y))
@@ -61,6 +65,8 @@ func save() -> void:
 	c.set_value("video", "vsync", vsync)
 	c.set_value("video", "fov", fov)
 	c.set_value("video", "show_fps", show_fps)
+	c.set_value("video", "camera_filter", camera_filter)
+	c.set_value("video", "render_scale", render_scale)
 	c.set_value("control", "camera_tilt", camera_tilt)
 	c.set_value("control", "mouse_sens", mouse_sens)
 	c.set_value("control", "invert_y", invert_y)

@@ -51,6 +51,13 @@ var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры дл
 var _clean := OS.get_cmdline_user_args().has("--clean") and (_chase_mode or OS.get_cmdline_user_args().has("--cinematic"))
 ## Кадры для проверки графики: --look=x,y,z,tx,ty,tz — неподвижная камера (точка и куда смотреть).
 var _look := PackedFloat32Array()
+## Камера «bodycam»: логический угол обзора (_fov) и линза — камера рендерит шире,
+## фильтр возвращает центру масштаб _fov. Метки OSD проходят через ту же линзу (_proj).
+var _fov := 100.0
+var _lens_k := 0.0
+var _lens_s := 1.0
+var _prev_basis := Basis.IDENTITY
+var _sun: DirectionalLight3D
 
 
 func _look_arg() -> PackedFloat32Array:
@@ -76,6 +83,7 @@ func _ready() -> void:
 	add_child(world_root)
 	WorldBuilder.build(feed.terrain, world_root, quality)
 	_look = _look_arg()
+	_sun = world_root.get_node_or_null("Sun") as DirectionalLight3D
 	_precip = WorldBuilder.precipitation(feed.terrain.preset, quality)
 	if _precip != null:
 		add_child(_precip)
@@ -97,6 +105,7 @@ func _ready() -> void:
 
 	cam = Camera3D.new()
 	cam.fov = Settings.fov
+	_fov = Settings.fov
 	cam.near = 0.05
 	cam.far = 4000.0
 	cam.attributes = WorldBuilder.camera_attributes(feed.terrain.preset.daytime)
@@ -355,7 +364,7 @@ func _process(delta: float) -> void:
 		_spectate_camera(drones, me, delta)
 	_was_flying = mine != null
 	if _look.size() == 6:
-		cam.fov = 75.0
+		_fov = 75.0
 		cam.look_at_from_position(Vector3(_look[0], _look[1], _look[2]), Vector3(_look[3], _look[4], _look[5]), Vector3.UP)
 	if _precip != null:
 		_precip.global_position = cam.global_position + cam.global_transform.basis.z * -12.0 + Vector3(0, 22, 0)
@@ -402,12 +411,12 @@ func _fpv_camera(d: DroneState, delta: float) -> void:
 		var amp := shake * 0.15 + maxf(0.0, 0.3 - d.signal_q) * 0.03
 		jitter = Vector3(randf_range(-amp, amp), randf_range(-amp, amp), 0)
 	cam.global_transform = Transform3D(basis, d.pos + offset + jitter)
-	cam.fov = lerpf(cam.fov, Settings.fov + (6.0 if _last_input.boost else 0.0), delta * 4.0)
+	_fov = lerpf(_fov, Settings.fov + (6.0 if _last_input.boost else 0.0), delta * 4.0)
 	_chase_pos = cam.global_position
 
 
 func _chase_camera(d: DroneState, delta: float) -> void:
-	cam.fov = 70.0
+	_fov = 70.0
 	var back := -d.vel.normalized() if d.vel.length() > 2.0 else -d.forward()
 	var dist := (3.2 if d.kind == SimConst.Kind.COPTER else 5.5) if _clean else 7.0   # для съёмки моделей — ближе
 	var want := d.pos + back * dist + Vector3(0, 1.2 if _clean else 2.2, 0)
@@ -431,7 +440,7 @@ func _next_spectate() -> void:
 
 
 func _spectate_camera(drones: Dictionary, me, delta: float) -> void:
-	cam.fov = lerpf(cam.fov, 75.0, delta * 3.0)
+	_fov = lerpf(_fov, 75.0, delta * 3.0)
 	# Пока ждём перезапуска и живы — смотрим со своего укрытия, иначе следим за чужими дронами.
 	var waiting: bool = me != null and not me.eliminated and not feed.finished()
 	var target: DroneState = null
@@ -490,6 +499,37 @@ func _ruin_shelter(n: Node3D) -> void:
 
 func _update_post(d: DroneState) -> void:
 	post.visible = not _clean
+	var amount: float = [0.0, 0.5, 1.0][clampi(Settings.camera_filter, 0, 2)]
+	var fpv := d != null and not _chase_mode and _look.is_empty()
+	if not fpv:
+		amount *= 0.3
+	# Линза: FPV — широкий угол с бочкой, наблюдение — почти без искажений, кадры без фильтра — без линзы.
+	_lens_k = 0.0 if _clean else (lerpf(0.12, 0.34, amount) if fpv else 0.03)
+	var aspect := get_viewport().get_visible_rect().size.aspect()
+	_lens_s = 1.0 / (1.0 + _lens_k * aspect * aspect * 0.25)
+	cam.fov = clampf(rad_to_deg(2.0 * atan(tan(deg_to_rad(_fov) * 0.5) / _lens_s)), 1.0, 165.0)
+	post_mat.set_shader_parameter("lens_k", _lens_k)
+	post_mat.set_shader_parameter("lens_s", _lens_s)
+	post_mat.set_shader_parameter("amount", amount)
+	# Смаз и роллинг-шаттер — от поворота камеры за кадр.
+	var dt := maxf(get_process_delta_time(), 0.001)
+	var rel := _prev_basis.inverse() * cam.global_transform.basis
+	_prev_basis = cam.global_transform.basis
+	var e := rel.get_euler()
+	var vf := deg_to_rad(cam.fov)
+	var hf := 2.0 * atan(tan(vf * 0.5) * aspect)
+	var bv := Vector2(-e.y / hf, e.x / vf) * 0.6
+	if bv.length() > 0.08:
+		bv = bv.normalized() * 0.08   # резкий разворот/телепорт камеры — без «полосы на весь экран»
+	post_mat.set_shader_parameter("blur_vec", bv if fpv else Vector2.ZERO)
+	post_mat.set_shader_parameter("roll_rate", clampf(e.z * 0.6, -0.08, 0.08) if fpv else 0.0)
+	post_mat.set_shader_parameter("shutter", clampf(-e.y / dt * 0.004, -0.03, 0.03) if fpv else 0.0)
+	post_mat.set_shader_parameter("jello", (clampf(d.thrust_frac, 0.0, 1.0) * 0.6 + clampf(d.vel.length() / 50.0, 0.0, 1.0) * 0.4) if fpv else 0.0)
+	var preset: MapPreset = feed.terrain.preset
+	post_mat.set_shader_parameter("gain", [0.1, 0.4, 0.4, 0.25, 0.25, 1.0][preset.daytime])
+	post_mat.set_shader_parameter("rain", 0.8 if fpv and preset.precip == MapPreset.Precip.RAIN else 0.0)
+	post_mat.set_shader_parameter("compress", 0.15)
+	post_mat.set_shader_parameter("sun_pos", _sun_screen(preset))
 	if d != null:
 		var nl := clampf(d.nolink / SimConst.NOLINK_FALL, 0.0, 1.0)
 		if not d.control and d.trapped <= 0.0:
@@ -498,14 +538,49 @@ func _update_post(d: DroneState) -> void:
 		post_mat.set_shader_parameter("nolink", nl * 0.85)
 		post_mat.set_shader_parameter("jam", clampf(0.15 + (1.0 - d.signal_q) * 0.9, 0.0, 1.0) if d.jammed else 0.0)
 		post_mat.set_shader_parameter("spectate", 0.0)
-		post_mat.set_shader_parameter("lens", 0.14)
 	else:
 		post_mat.set_shader_parameter("signal_q", 1.0)
 		post_mat.set_shader_parameter("nolink", 0.0)
 		post_mat.set_shader_parameter("jam", 0.0)
 		post_mat.set_shader_parameter("spectate", 1.0)
-		post_mat.set_shader_parameter("lens", 0.02)
 	post_mat.set_shader_parameter("hit_flash", hit_flash)
+
+
+## Солнце на экране (uv) и его видимость: не за рельефом/постройкой, не ночью, слабее в пасмурно.
+func _sun_screen(preset: MapPreset) -> Vector3:
+	if _sun == null or preset.daytime == MapPreset.Daytime.NIGHT:
+		return Vector3(0.5, 0.5, 0.0)
+	var to_sun := _sun.global_transform.basis.z.normalized()
+	var p := cam.global_position + to_sun * 1000.0
+	if cam.is_position_behind(p):
+		return Vector3(0.5, 0.5, 0.0)
+	var size := get_viewport().get_visible_rect().size
+	var sp := _proj(p) / size
+	var off := maxf(absf(sp.x - 0.5), absf(sp.y - 0.5))
+	var vis := 1.0 - smoothstep(0.45, 0.75, off)
+	if vis <= 0.0 or not feed.terrain.line_of_sight(cam.global_position, cam.global_position + to_sun * 500.0):
+		return Vector3(sp.x, sp.y, 0.0)
+	var k: float = {MapPreset.Daytime.OVERCAST: 0.15, MapPreset.Daytime.FOG: 0.35}.get(preset.daytime, 1.0)
+	return Vector3(sp.x, sp.y, vis * k)
+
+
+## Точка мира → экран с учётом линзы фильтра (обратная функция бочки из fpv_feed.gdshader).
+func _proj(p: Vector3) -> Vector2:
+	var q := cam.unproject_position(p)
+	if _lens_k <= 0.0 and _lens_s == 1.0:
+		return q
+	var size := get_viewport().get_visible_rect().size
+	var asp := Vector2(size.aspect(), 1.0)
+	var sc := (q / size - Vector2(0.5, 0.5)) * asp
+	var rho := sc.length()
+	if rho < 1e-6:
+		return q
+	var r := rho / _lens_s
+	for i in 4:   # Ньютон: r·s·(1 + k·r²) = ρ
+		var f := r * _lens_s * (1.0 + _lens_k * r * r) - rho
+		r -= f / (_lens_s * (1.0 + 3.0 * _lens_k * r * r))
+	var cn := sc * (r / rho)
+	return (cn / asp + Vector2(0.5, 0.5)) * size
 
 
 func _update_audio(d: DroneState) -> void:
@@ -580,7 +655,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 				cand_ang = ang
 				cand = o.id
 		var behind := cam.is_position_behind(o.pos)
-		var sc := Vector2.ZERO if behind else cam.unproject_position(o.pos)
+		var sc := Vector2.ZERO if behind else _proj(o.pos)
 		if not behind and view.has_point(sc):
 			m.on = true
 			m.pos = sc
@@ -588,11 +663,11 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 				var tg := _lock_target()
 				var lp := PilotAssist.lead_point(d, tg if tg != null else o)
 				if not cam.is_position_behind(lp):
-					m.lead = cam.unproject_position(lp)
+					m.lead = _proj(lp)
 			elif d != null and dist < 450.0 and dist > 8.0:
 				var lead := o.pos + o.vel * (dist / maxf(my_speed, 20.0))
 				if not cam.is_position_behind(lead):
-					m.lead = cam.unproject_position(lead)
+					m.lead = _proj(lead)
 		elif dist < 400.0 or o.id == _lock_id:
 			var loc := cam.global_transform.affine_inverse() * o.pos
 			var dir := Vector2(loc.x, -loc.y)
@@ -645,7 +720,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 			a.y = cam.global_position.y
 			b.y = cam.global_position.y
 			if not cam.is_position_behind(a) and not cam.is_position_behind(b):
-				data.horizon = [cam.unproject_position(a), cam.unproject_position(b)]
+				data.horizon = [_proj(a), _proj(b)]
 		# Отметки укрытий на компасе и на экране.
 		var marks := []
 		var smarks := []
@@ -659,7 +734,7 @@ func _update_osd(d: DroneState, me, drones: Dictionary) -> void:
 			var home: bool = p.pid == feed.my_pid
 			marks.append({"bearing": bearing, "color": col, "label": "БАЗА" if home else p.name, "dist": to.length(), "home": home})
 			if not home and not cam.is_position_behind(sp) and to.length() < 900.0:
-				var sc := cam.unproject_position(sp)
+				var sc := _proj(sp)
 				if Rect2(Vector2.ZERO, osd.size).has_point(sc):
 					smarks.append({"pos": sc, "color": col, "label": p.name, "dist": to.length()})
 		data.marks = marks
