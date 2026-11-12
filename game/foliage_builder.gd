@@ -434,7 +434,7 @@ static func ground_maps(terrain: Terrain) -> Array:
 	return [ImageTexture.create_from_image(himg), ImageTexture.create_from_image(mimg)]
 
 
-## Пучок травы: 4 изогнутые травинки (по 3 треугольника), высота 1 (масштаб — в шейдере).
+## Пучок травы: 9 изогнутых травинок (по 3 треугольника), высота 1 (масштаб — в шейдере).
 static func grass_tuft() -> ArrayMesh:
 	if _meshes.has("grass"):
 		return _meshes.grass
@@ -442,11 +442,11 @@ static func grass_tuft() -> ArrayMesh:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
-	for b in 4:
-		var a := TAU * b / 4.0 + rng.randf_range(-0.4, 0.4)
-		var base := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.02, 0.08)
-		var lean := Vector3(cos(a + 0.3), 0, sin(a + 0.3)) * rng.randf_range(0.12, 0.3)
-		var side := Vector3(-sin(a), 0, cos(a)) * 0.025
+	for b in 9:
+		var a := TAU * b / 9.0 + rng.randf_range(-0.4, 0.4)
+		var base := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.03, 0.22)
+		var lean := Vector3(cos(a + 0.3), 0, sin(a + 0.3)) * rng.randf_range(0.1, 0.35)
+		var side := Vector3(-sin(a), 0, cos(a)) * 0.03
 		var h := rng.randf_range(0.7, 1.0)
 		var p0 := base - side
 		var p1 := base + side
@@ -468,8 +468,8 @@ static func _grass(terrain: Terrain, root: Node3D, quality: int) -> void:
 	var preset := terrain.preset
 	var pal := WorldBuilder.palette(preset.biome)
 	var maps := ground_maps(terrain)
-	var n := 150 if quality == 1 else 210
-	var spacing := 0.34 if quality == 1 else 0.3
+	var n := 130 if quality == 1 else 180
+	var spacing := 0.26 if quality == 1 else 0.24
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = grass_tuft()
@@ -502,7 +502,7 @@ static func _grass(terrain: Terrain, root: Node3D, quality: int) -> void:
 	m.set_shader_parameter("color_a", Vector3(ga.r, ga.g, ga.b))
 	m.set_shader_parameter("color_b", Vector3(gb.r, gb.g, gb.b))
 	m.set_shader_parameter("dry", 0.6 if dry else 0.15)
-	m.set_shader_parameter("blade_h", 0.38 if not winter else 0.3)
+	m.set_shader_parameter("blade_h", 0.3 if not winter else 0.24)
 	m.set_shader_parameter("macro_noise", SurfaceLib.noise_tex(0.008))
 	mi.material_override = m
 	mi.name = "Grass"

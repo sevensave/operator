@@ -9,10 +9,12 @@ const SKY_SHADER := preload("res://shaders/sky.gdshader")
 
 
 static func build(terrain: Terrain, root: Node3D, quality: int) -> void:
+	_quality = quality
 	_environment(root, quality, terrain.preset)
 	_ground(terrain, root, quality)
 	FoliageBuilder.build(terrain, root, quality)
-	_ruins(terrain, root)
+	_ruins(terrain, root, quality)
+	_structure_weather(terrain.preset)
 
 
 ## Наборы времени суток/погоды: свет, небо, туман, экспозиция.
@@ -463,98 +465,353 @@ static func _cone(st: SurfaceTool, base: Vector3, r0: float, r1: float, h: float
 		st.add_vertex(p0)
 
 
-static func _ruins(terrain: Terrain, root: Node3D) -> void:
-	var st := SurfaceTool.new()
+## Поверхности построек (код в альфе вершинного цвета, слой массива текстур structure-шейдера).
+enum { SURF_CONCRETE, SURF_BRICK, SURF_PLASTER, SURF_RUST, SURF_WOOD, SURF_SOIL, SURF_ASPHALT }
+const STRUCT_LAYERS := [SurfaceLib.CONCRETE, SurfaceLib.BRICK, SurfaceLib.PLASTER, SurfaceLib.RUST,
+	SurfaceLib.BARK, SurfaceLib.SOIL, SurfaceLib.ASPHALT]
+static var _quality := 1
+
+
+## Начать сетку постройки: нужен канал CUSTOM0 (уровень земли для грязи у основания).
+static func begin_structure(st: SurfaceTool) -> void:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+
+
+## Руины: дома со стенами из простенков и перемычек (оконные проёмы с откосами — толщина стены),
+## обломанным верхом, обрушенным перекрытием, арматурой и завалами; вышки — опоры с раскосами и бак.
+## Всё строго внутри AABB из Terrain.boxes (хитбокс не меняется); внешний вид — свой RNG.
+static func _ruins(terrain: Terrain, root: Node3D, quality := 1) -> void:
+	var st := SurfaceTool.new()
+	begin_structure(st)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = terrain.seed + 11
+	var decals := []
 	for b in terrain.boxes:
+		var ground := b.position.y + 1.0
 		var tall := b.size.y > 15.0
-		var c := Color(0.55, 0.53, 0.50) if not tall else Color(0.42, 0.40, 0.38)
-		c = c * rng.randf_range(0.85, 1.1)
 		if tall:
-			# Вышка: опоры и бак сверху.
-			var top := b.position + Vector3(0, b.size.y, 0)
-			for k in 4:
-				var off := Vector3(0.3 if k % 2 == 0 else b.size.x - 0.6, 0, 0.3 if k < 2 else b.size.z - 0.6)
-				_box(st, AABB(b.position + off, Vector3(0.3, b.size.y - 4.0, 0.3)), c)
-			_box(st, AABB(top - Vector3(0, 4.0, 0) + Vector3(-0.4, 0, -0.4), Vector3(b.size.x + 0.8, 4.0, b.size.z + 0.8)), c * 1.1)
+			_tower(st, b, ground, rng)
 			continue
-		# Коробка разрушенного дома: стены с проломами, без крыши.
-		var wall := 0.5
-		var heights := [b.size.y * rng.randf_range(0.5, 1.0), b.size.y * rng.randf_range(0.3, 1.0),
-			b.size.y * rng.randf_range(0.6, 1.0), b.size.y * rng.randf_range(0.2, 0.9)]
-		_box(st, AABB(b.position, Vector3(b.size.x, heights[0], wall)), c)
-		_box(st, AABB(b.position + Vector3(0, 0, b.size.z - wall), Vector3(b.size.x * rng.randf_range(0.4, 1.0), heights[1], wall)), c)
-		_box(st, AABB(b.position, Vector3(wall, heights[2], b.size.z)), c * 0.95)
-		_box(st, AABB(b.position + Vector3(b.size.x - wall, 0, 0), Vector3(wall, heights[3], b.size.z * rng.randf_range(0.5, 1.0))), c * 0.95)
-		# Перекрытие-плита, иногда.
-		if rng.randf() < 0.5:
-			_box(st, AABB(b.position + Vector3(0, minf(heights[0], heights[2]) - 0.4, 0), Vector3(b.size.x * 0.7, 0.4, b.size.z * 0.6)), c * 0.8)
-		# Завалы.
-		for k in 4:
-			var p := b.position + Vector3(rng.randf() * b.size.x, 0.6, rng.randf() * b.size.z)
-			_box(st, AABB(p, Vector3(rng.randf_range(0.6, 1.8), rng.randf_range(0.4, 1.0), rng.randf_range(0.6, 1.8))), c * 0.7)
-	st.generate_normals()
+		var k := rng.randf()
+		var surf := SURF_BRICK if k < 0.5 else (SURF_PLASTER if k < 0.78 else SURF_CONCRETE)
+		var c := Color(0.56, 0.54, 0.51) * rng.randf_range(0.9, 1.08)
+		if surf == SURF_PLASTER:
+			c = [Color(0.62, 0.58, 0.50), Color(0.55, 0.57, 0.55), Color(0.60, 0.52, 0.46)][rng.randi() % 3] * rng.randf_range(0.9, 1.05)
+		var wall := 0.45
+		var top := b.size.y
+		var hs := [top * rng.randf_range(0.6, 1.0), top * rng.randf_range(0.35, 1.0), top * rng.randf_range(0.65, 1.0), top * rng.randf_range(0.25, 0.9)]
+		var lens := [1.0, rng.randf_range(0.45, 1.0), 1.0, rng.randf_range(0.5, 1.0)]
+		# Стены: 0 — передняя (−z), 1 — задняя (+z), 2 — левая (−x), 3 — правая (+x).
+		_wall(st, b.position, Vector3.RIGHT, b.size.x * lens[0], hs[0], wall, ground, surf, c, rng, Vector3.BACK)
+		_wall(st, b.position + Vector3(0, 0, b.size.z - wall), Vector3.RIGHT, b.size.x * lens[1], hs[1], wall, ground, surf, c, rng, Vector3.FORWARD)
+		_wall(st, b.position + Vector3(0, 0, wall), Vector3.BACK, (b.size.z - wall * 2.0), hs[2], wall, ground, surf, c * 0.97, rng, Vector3.RIGHT, true)
+		_wall(st, b.position + Vector3(b.size.x - wall, 0, wall), Vector3.BACK, (b.size.z - wall * 2.0) * lens[3], hs[3], wall, ground, surf, c * 0.97, rng, Vector3.LEFT, true)
+		# Перекрытие: целое по краю или обрушенное наклонно внутрь (внутри AABB).
+		var slab_y := minf(hs[0], hs[2])
+		if slab_y > 3.4 and rng.randf() < 0.7:
+			var fl := b.position.y + minf(3.4, slab_y - 0.3)
+			var sx := b.size.x * rng.randf_range(0.45, 0.7)
+			var sz := b.size.z * rng.randf_range(0.45, 0.7)
+			_box(st, AABB(Vector3(b.position.x + wall, fl, b.position.z + wall), Vector3(sx, 0.25, sz)), c * 0.85, SURF_CONCRETE, ground)
+			# Свисающая обрушенная часть: повёрнутая плита от края целой до пола.
+			var drop := fl - b.position.y - 1.2
+			var span := minf(b.size.x - sx - wall * 2.0 - 0.2, 4.0)
+			if span > 1.2 and drop > 1.0:
+				var ang := atan2(drop, span)
+				var len := sqrt(span * span + drop * drop) * 0.9
+				var cpos := Vector3(b.position.x + wall + sx + span * 0.45, fl - drop * 0.45, b.position.z + wall + sz * 0.5)
+				var xf := Transform3D(Basis(Vector3.BACK, -ang), cpos)
+				add_obox(st, xf, Vector3(len, 0.22, sz * 0.9), c * 0.8, SURF_CONCRETE, ground)
+			# Арматура из края плиты.
+			for r in 6:
+				var p := Vector3(b.position.x + wall + sx, fl + 0.12, b.position.z + wall + 0.3 + r * (sz - 0.6) / 5.0)
+				var l := rng.randf_range(0.4, 1.1)
+				var bend := Vector3(l * 0.7, rng.randf_range(-0.25, 0.1), rng.randf_range(-0.15, 0.15))
+				_rebar(st, p, bend, b, ground)
+		# Завалы: кучи обломков внутри у стен.
+		for pile in 3:
+			var center := b.position + Vector3(rng.randf_range(1.2, b.size.x - 1.2), 1.0, rng.randf_range(1.2, b.size.z - 1.2))
+			for j in 7:
+				var sz3 := Vector3(rng.randf_range(0.3, 1.0), rng.randf_range(0.15, 0.5), rng.randf_range(0.3, 0.9))
+				var p := center + Vector3(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.15, 0.25), rng.randf_range(-1.0, 1.0))
+				var xf := Transform3D(Basis.from_euler(Vector3(rng.randf_range(-0.3, 0.3), rng.randf() * TAU, rng.randf_range(-0.3, 0.3))), p)
+				var surf2 := surf if rng.randf() < 0.6 else SURF_CONCRETE
+				add_obox(st, _clamp_xf(xf, sz3, b), sz3, c * rng.randf_range(0.7, 0.95), surf2, ground)
+		# Наклейки: копоть над проёмом и трещина (только на среднем и высоком).
+		if quality >= 1:
+			decals.append([b, ground, rng.randf(), rng.randf(), hs[0]])
+	st.generate_tangents()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = structure_material()
 	mi.name = "Ruins"
 	root.add_child(mi)
+	for d in decals:
+		_wall_decals(root, d[0], d[1], d[2], d[3], d[4])
+
+
+## Стена вдоль axis длиной len, высотой h (от основания AABB), толщиной t, нормаль наружу — out.
+## Проёмы окон 1,2×1,3 м через ~3 м на каждом этаже; верх обломан ступенями.
+static func _wall(st: SurfaceTool, o: Vector3, axis: Vector3, len: float, h: float, t: float, ground: float,
+		surf: int, c: Color, rng: RandomNumberGenerator, out: Vector3, side := false) -> void:
+	if len < 0.6 or h < 0.6:
+		return
+	var thick := Vector3(t, 0, 0) if side else Vector3(0, 0, t)
+	var n := int(floor((len - 1.4) / 3.0))
+	var wins := []
+	for i in n:
+		var cx := (i + 0.5) * len / n
+		wins.append(cx)
+	var base := o.y
+	var floor0 := ground - base   # высота пола от основания AABB (≈ 1 м — подземная часть)
+	# Колонки: простенки между окнами, по всей высоте с обломанным верхом.
+	# Профиль облома: плавная «волна» вдоль стены, глубина своя у каждой стены.
+	var drop := rng.randf_range(0.3, 2.4)
+	var ph := rng.randf() * TAU
+	var fq := rng.randf_range(0.35, 0.8)
+	var cuts := [0.0]
+	for cx in wins:
+		cuts.append(cx - 0.6)
+		cuts.append(cx + 0.6)
+	cuts.append(len)
+	for i in range(0, cuts.size() - 1):
+		var x0: float = cuts[i]
+		var x1: float = cuts[i + 1]
+		if x1 - x0 < 0.05:
+			continue
+		var is_win := i % 2 == 1
+		# Обломанный верх: несколько ступеней разной высоты на отрезке.
+		var steps := maxi(1, int((x1 - x0) / 0.9))
+		for sidx in steps:
+			var a := x0 + (x1 - x0) * sidx / steps
+			var bb := x0 + (x1 - x0) * (sidx + 1) / steps
+			var xm := (a + bb) * 0.5
+			var top := clampf(h - drop * (0.5 + 0.5 * sin(xm * fq + ph)) * absf(sin(xm * fq * 0.37 + ph * 1.7)) - rng.randf_range(0.0, 0.15), 0.6, h)
+			if not is_win:
+				_box(st, _seg(o, axis, thick, a, bb, 0.0, top), c, surf, ground)
+				continue
+			# Под окнами и между этажами — подоконная часть и перемычки.
+			var y := 0.0
+			var fl := 0
+			while y < top:
+				var sill := floor0 + 0.9 + fl * 3.0
+				var head := sill + 1.3
+				if head > top - 0.25:
+					_box(st, _seg(o, axis, thick, a, bb, y, top), c, surf, ground)
+					break
+				if sill > y:
+					_box(st, _seg(o, axis, thick, a, bb, y, sill), c, surf, ground)
+				y = head
+				fl += 1
+	# Пояс/карниз на высоте перекрытия — тоньше и чуть темнее (читается этажность).
+	if h > 4.0 and surf != SURF_CONCRETE:
+		var by := floor0 + 2.9
+		_box(st, _seg(o - out * 0.0, axis, thick, 0.0, len, by, by + 0.22), c * 0.82, SURF_CONCRETE, ground)
+
+
+static func _seg(o: Vector3, axis: Vector3, thick: Vector3, a: float, b: float, y0: float, y1: float) -> AABB:
+	var p := o + axis * a + Vector3(0, y0, 0)
+	var size := axis * (b - a) + thick + Vector3(0, y1 - y0, 0)
+	return AABB(p, size).abs()
+
+
+## Арматура: два отрезка тонкого прутка, обрезанные по AABB.
+static func _rebar(st: SurfaceTool, p: Vector3, bend: Vector3, b: AABB, ground: float) -> void:
+	var mid := p + bend * 0.6
+	var tip := mid + bend * 0.4 + Vector3(0, -0.15, 0)
+	for seg in [[p, mid], [mid, tip]]:
+		var a: Vector3 = seg[0]
+		var e: Vector3 = seg[1]
+		e = e.clamp(b.position + Vector3.ONE * 0.05, b.end - Vector3.ONE * 0.05)
+		var d := e - a
+		if d.length() < 0.05:
+			continue
+		var basis := Basis.looking_at(d.normalized(), Vector3.UP if absf(d.normalized().y) < 0.95 else Vector3.RIGHT)
+		add_obox(st, Transform3D(basis, (a + e) * 0.5), Vector3(0.03, 0.03, d.length()), Color(0.4, 0.33, 0.28), SURF_RUST, ground)
+
+
+## Обломок не выходит за AABB: центр подвигается внутрь с запасом на полудиагональ.
+static func _clamp_xf(xf: Transform3D, size: Vector3, b: AABB) -> Transform3D:
+	var r := size.length() * 0.5
+	var lo := b.position + Vector3.ONE * r
+	var hi := b.end - Vector3.ONE * r
+	var o := xf.origin
+	o = Vector3(clampf(o.x, lo.x, maxf(lo.x, hi.x)), clampf(o.y, lo.y, maxf(lo.y, hi.y)), clampf(o.z, lo.z, maxf(lo.z, hi.z)))
+	return Transform3D(xf.basis, o)
+
+
+## Вышка: четыре опоры, раскосы, площадка и бак сверху (металл, бетонный фундамент).
+static func _tower(st: SurfaceTool, b: AABB, ground: float, rng: RandomNumberGenerator) -> void:
+	var c := Color(0.45, 0.42, 0.40) * rng.randf_range(0.9, 1.1)
+	var leg_h := b.size.y - 4.0
+	for k in 4:
+		var off := Vector3(0.0 if k % 2 == 0 else b.size.x - 0.3, 0, 0.0 if k < 2 else b.size.z - 0.3)
+		_box(st, AABB(b.position + off, Vector3(0.3, leg_h, 0.3)), c, SURF_RUST, ground)
+		_box(st, AABB(b.position + off - Vector3(0.0, 0, 0.0) + Vector3(-0.0, 0, 0), Vector3(0.3, 1.6, 0.3)).grow(0.0), c * 0.9, SURF_CONCRETE, ground)
+	# Раскосы по граням: наклонные полосы внутри габарита.
+	var lv := 4
+	for i in lv:
+		var y0 := 1.0 + i * (leg_h - 1.0) / lv
+		var y1 := y0 + (leg_h - 1.0) / lv
+		for face in 4:
+			var a: Vector3
+			var e: Vector3
+			match face:
+				0: a = Vector3(0.15, y0, 0.15); e = Vector3(b.size.x - 0.15, y1, 0.15)
+				1: a = Vector3(0.15, y0, b.size.z - 0.15); e = Vector3(b.size.x - 0.15, y1, b.size.z - 0.15)
+				2: a = Vector3(0.15, y0, 0.15); e = Vector3(0.15, y1, b.size.z - 0.15)
+				_: a = Vector3(b.size.x - 0.15, y0, 0.15); e = Vector3(b.size.x - 0.15, y1, b.size.z - 0.15)
+			var d := e - a
+			var basis := Basis.looking_at(d.normalized(), Vector3.UP if absf(d.normalized().y) < 0.95 else Vector3.RIGHT)
+			add_obox(st, Transform3D(basis, b.position + (a + e) * 0.5), Vector3(0.08, 0.08, d.length()), c * 0.85, SURF_RUST, ground)
+	var top := b.position + Vector3(0, leg_h, 0)
+	_box(st, AABB(top, Vector3(b.size.x, 0.25, b.size.z)), c * 0.9, SURF_RUST, ground)
+	_box(st, AABB(top + Vector3(0.2, 0.25, 0.2), Vector3(b.size.x - 0.4, 3.75, b.size.z - 0.4)), c * 1.05, SURF_RUST, ground)
+
+
+static var _decal_tex := {}
+
+
+## Копоть над окном и трещина на передней стене дома.
+static func _wall_decals(root: Node3D, b: AABB, ground: float, r1: float, r2: float, h: float) -> void:
+	if h < 2.0:
+		return
+	for kind in 2:
+		var d := Decal.new()
+		var w := 3.0 if kind == 0 else 2.2
+		var hh := 3.5 if kind == 0 else 2.2
+		d.size = Vector3(w, 1.2, hh)
+		d.texture_albedo = _decal_texture(kind)
+		d.albedo_mix = 1.0
+		d.modulate = Color(0.08, 0.07, 0.06, 0.85) if kind == 0 else Color(0.15, 0.14, 0.13, 0.9)
+		d.upper_fade = 0.2
+		d.lower_fade = 0.2
+		d.cull_mask = 1
+		d.distance_fade_enabled = true
+		d.distance_fade_begin = 120.0
+		d.distance_fade_length = 30.0
+		var x := b.position.x + clampf(b.size.x * (0.25 + r1 * 0.5), w * 0.5, b.size.x - w * 0.5)
+		var y := clampf(ground + (2.4 if kind == 0 else 1.2 + r2 * 1.5), ground + 0.5, b.end.y - hh * 0.3)
+		d.position = Vector3(x + (r2 - 0.5) * 2.0 * kind, y, b.position.z - 0.1)
+		d.rotation = Vector3(-PI * 0.5, 0, 0)   # проекция −Y → +z: в переднюю стену снаружи
+		root.add_child(d)
+
+
+## Процедурные текстуры наклеек: 0 — языки копоти (вверх), 1 — ветвистая трещина.
+static func _decal_texture(kind: int) -> Texture2D:
+	if _decal_tex.has(kind):
+		return _decal_tex[kind]
+	var size := 256
+	var data := PackedByteArray()
+	data.resize(size * size * 4)
+	if kind == 0:
+		var n := FastNoiseLite.new()
+		n.frequency = 0.02
+		n.seed = 5
+		for y in size:
+			for x in size:
+				var u := (x - size * 0.5) / (size * 0.5)
+				var v := float(y) / size   # 0 — верх, 1 — низ
+				var plume := exp(-u * u / (0.08 + (1.0 - v) * 0.35)) * smoothstep(0.0, 0.35, v) * (1.0 - smoothstep(0.9, 1.0, v))
+				var a := clampf(plume * (0.6 + n.get_noise_2d(x, y * 0.5) * 0.8), 0.0, 1.0)
+				var o := (y * size + x) * 4
+				data[o] = 255
+				data[o + 1] = 255
+				data[o + 2] = 255
+				data[o + 3] = int(a * 255.0)
+	else:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 17
+		FoliageBuilder._twig(data, size, rng, Vector2(128, 10), PI * 0.5 + rng.randf_range(-0.3, 0.3), 140.0, 2.5, 4)
+		for i in size * size:
+			data[i * 4] = 255
+			data[i * 4 + 1] = 255
+			data[i * 4 + 2] = 255
+	var img := Image.create_from_data(size, size, false, Image.FORMAT_RGBA8, data)
+	img.generate_mipmaps()
+	var t := ImageTexture.create_from_image(img)
+	_decal_tex[kind] = t
+	return t
 
 
 const STRUCTURE_SHADER := preload("res://shaders/structure.gdshader")
-static var _structure_mat: ShaderMaterial
+static var _structure_mats := {}
 
 
-## Общий материал построек: вершинный цвет + процедурная фактура.
+## Общий материал построек: слои библиотеки поверхностей (код в вершине), износ рёбер,
+## грязь у земли, потёки, мох/снег сверху. Кэш по размеру текстур (уровню качества).
 static func structure_material() -> ShaderMaterial:
-	if _structure_mat == null:
-		_structure_mat = ShaderMaterial.new()
-		_structure_mat.shader = STRUCTURE_SHADER
-		_structure_mat.set_shader_parameter("noise_tex", SurfaceLib.noise_tex(0.03))
-	return _structure_mat
+	var size := SurfaceLib.size_for(_quality)
+	if not _structure_mats.has(size):
+		var m := ShaderMaterial.new()
+		m.shader = STRUCTURE_SHADER
+		m.set_shader_parameter("alb_arr", SurfaceLib.array(STRUCT_LAYERS, 0, size))
+		m.set_shader_parameter("nrm_arr", SurfaceLib.array(STRUCT_LAYERS, 1, size))
+		m.set_shader_parameter("orm_arr", SurfaceLib.array(STRUCT_LAYERS, 2, size))
+		m.set_shader_parameter("noise_tex", SurfaceLib.noise_tex(0.03))
+		var tiles := PackedFloat32Array()
+		for k in STRUCT_LAYERS:
+			tiles.append(1.0 / SurfaceLib.TILE[k])
+		m.set_shader_parameter("tiles", tiles)
+		_structure_mats[size] = m
+	return _structure_mats[size]
 
 
-static func _box(st: SurfaceTool, b: AABB, c: Color) -> void:
+## Погода на постройках (мох летом/осенью, снег зимой, мокрое в дождь) — общий материал на матч.
+static func _structure_weather(preset: MapPreset) -> void:
+	var m := structure_material()
+	m.set_shader_parameter("snow", 1.0 if preset.biome == MapPreset.Biome.WINTER else 0.0)
+	m.set_shader_parameter("moss", 0.0 if preset.biome == MapPreset.Biome.WINTER or preset.biome == MapPreset.Biome.STEPPE else 1.0)
+	m.set_shader_parameter("wet", 1.0 if preset.precip == MapPreset.Precip.RAIN else 0.0)
+
+
+## Коробка с гранями: UV — локальные метры грани (u — вдоль, v — вверх для боковых),
+## UV2 — размер грани (для износа рёбер), CUSTOM0.x — уровень земли, альфа цвета — код поверхности.
+static func _box(st: SurfaceTool, b: AABB, c: Color, surf := SURF_CONCRETE, ground := NAN) -> void:
 	var p := b.position
 	var s := b.size
 	var v := [
 		p, p + Vector3(s.x, 0, 0), p + Vector3(s.x, 0, s.z), p + Vector3(0, 0, s.z),
 		p + Vector3(0, s.y, 0), p + Vector3(s.x, s.y, 0), p + Vector3(s.x, s.y, s.z), p + Vector3(0, s.y, s.z)]
 	var faces := [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7], [4, 5, 6, 7], [3, 2, 1, 0]]
-	var shade := [0.9, 0.8, 0.9, 0.8, 1.0, 0.5]
-	for fi in faces.size():
-		var f: Array = faces[fi]
-		var col: Color = c * shade[fi]
-		col.a = 1.0
-		st.set_color(col)
-		st.add_vertex(v[f[0]])
-		st.add_vertex(v[f[2]])
-		st.add_vertex(v[f[1]])
-		st.add_vertex(v[f[0]])
-		st.add_vertex(v[f[3]])
-		st.add_vertex(v[f[2]])
+	_faces(st, v, faces, c, surf, p.y if is_nan(ground) else ground)
+
+
+static func _faces(st: SurfaceTool, v: Array, faces: Array, c: Color, surf: int, ground: float) -> void:
+	var col := Color(c.r, c.g, c.b, (surf + 0.5) / 8.0)
+	var cust := Color(ground, 0, 0, 0)
+	var center := Vector3.ZERO
+	for p: Vector3 in v:
+		center += p / v.size()
+	for f: Array in faces:
+		var a: Vector3 = v[f[0]]
+		# Плоская нормаль грани: у прямоугольной коробки центр грани лежит на нормали от центра.
+		var fc: Vector3 = (v[f[0]] + v[f[1]] + v[f[2]] + v[f[3]]) * 0.25
+		var fn := (fc - center).normalized()
+		var w := a.distance_to(v[f[1]])
+		var h := a.distance_to(v[f[3]])
+		var uvs := [Vector2(0, h), Vector2(w, h), Vector2(w, 0), Vector2(0, 0)]
+		for idx in [0, 2, 1, 0, 3, 2]:
+			st.set_color(col)
+			st.set_custom(0, cust)
+			st.set_uv(uvs[idx])
+			st.set_uv2(Vector2(w, h))
+			st.set_normal(fn)
+			st.add_vertex(v[f[idx]])
 
 
 ## Публичный помощник для других построек.
-static func add_box(st: SurfaceTool, b: AABB, c: Color) -> void:
-	_box(st, b, c)
+static func add_box(st: SurfaceTool, b: AABB, c: Color, surf := SURF_CONCRETE, ground := NAN) -> void:
+	_box(st, b, c, surf, ground)
 
 
 ## Повёрнутая коробка: центр и базис в xf, размеры size.
-static func add_obox(st: SurfaceTool, xf: Transform3D, size: Vector3, c: Color) -> void:
+static func add_obox(st: SurfaceTool, xf: Transform3D, size: Vector3, c: Color, surf := SURF_CONCRETE, ground := 0.0) -> void:
 	var h := size * 0.5
 	var v := []
 	for k in 8:
 		var p := Vector3(h.x if k & 1 else -h.x, h.y if k & 2 else -h.y, h.z if k & 4 else -h.z)
 		v.append(xf * p)
 	var faces := [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
-	for f in faces:
-		st.set_color(c)
-		st.add_vertex(v[f[0]])
-		st.add_vertex(v[f[2]])
-		st.add_vertex(v[f[1]])
-		st.add_vertex(v[f[0]])
-		st.add_vertex(v[f[3]])
-		st.add_vertex(v[f[2]])
+	_faces(st, v, faces, c, surf, ground)

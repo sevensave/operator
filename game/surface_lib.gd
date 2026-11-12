@@ -348,7 +348,7 @@ static func _concrete(size: int, s: int, asphalt: bool, hgt: PackedFloat32Array,
 				_put(col, i, v, v, v * 1.02)
 				rgh[i] = int((0.88 - cr * 0.1) * 255.0)
 			else:
-				v = (0.48 + (b - 0.5) * 0.18 + f * 0.05) * (1.0 - p * 0.35) * (1.0 - cr * 0.4) * (1.0 - seam * 0.2)
+				v = (0.48 + (b - 0.5) * 0.12 + f * 0.04) * (1.0 - p * 0.2) * (1.0 - cr * 0.4) * (1.0 - seam * 0.2)
 				_put(col, i, v * 1.0, v * 0.99, v * 0.96)
 				rgh[i] = int((0.82 + f * 0.12) * 255.0)
 
@@ -390,18 +390,18 @@ static func _brick(size: int, s: int, hgt: PackedFloat32Array, col: PackedByteAr
 
 ## Штукатурка: песчаная зернистость, волосяные трещины, пятна сырости.
 static func _plaster(size: int, s: int, hgt: PackedFloat32Array, col: PackedByteArray, rgh: PackedByteArray) -> void:
-	var big := _noise(size, 0.01, s, FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 4)
+	var big := _noise(size, 0.004, s, FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 3)
 	var sand := _noise(size, 0.6, s + 1, FastNoiseLite.TYPE_VALUE, 1)
 	var crack := _noise(size, 0.02, s + 2, FastNoiseLite.TYPE_CELLULAR, 1, FastNoiseLite.RETURN_DISTANCE2_SUB)
-	var damp := _noise(size, 0.02, s + 3, FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 3)
+	var damp := _noise(size, 0.006, s + 3, FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 3)
 	for i in size * size:
 		var b := big[i] / 255.0
 		var sd := sand[i] / 255.0
 		var cr := smoothstep(0.025, 0.0, crack[i] / 255.0) * smoothstep(0.5, 0.65, damp[i] / 255.0)
-		var h := 0.6 + b * 0.25 + sd * 0.1 - cr * 0.4
+		var h := 0.6 + b * 0.25 + sd * 0.1 - cr * 0.2
 		hgt[i] = h
-		var dm := smoothstep(0.55, 0.75, damp[i] / 255.0) * 0.25
-		var v := (0.66 + (b - 0.5) * 0.1 + sd * 0.04) * (1.0 - dm) * (1.0 - cr * 0.5)
+		var dm := smoothstep(0.5, 0.8, damp[i] / 255.0) * 0.18
+		var v := (0.58 + (b - 0.5) * 0.06 + sd * 0.03) * (1.0 - dm) * (1.0 - cr * 0.22)
 		_put(col, i, v * 1.02, v * 0.98, v * 0.9)
 		rgh[i] = int((0.88 + sd * 0.1) * 255.0)
 

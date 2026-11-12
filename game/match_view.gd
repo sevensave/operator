@@ -49,6 +49,19 @@ var _autolock := OS.get_cmdline_user_args().has("--autolock")   # отладка
 var _chase_mode := OS.get_cmdline_user_args().has("--chase")   # кадры для арта: вид сзади
 ## Кадры для арта: при --chase/--cinematic убрать FPV-эффекты (линза, зерно, сканлайны).
 var _clean := OS.get_cmdline_user_args().has("--clean") and (_chase_mode or OS.get_cmdline_user_args().has("--cinematic"))
+## Кадры для проверки графики: --look=x,y,z,tx,ty,tz — неподвижная камера (точка и куда смотреть).
+var _look := PackedFloat32Array()
+
+
+func _look_arg() -> PackedFloat32Array:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--look="):
+			var v := PackedFloat32Array()
+			for x in a.substr(7).split(","):
+				v.append(x.to_float())
+			if v.size() == 6:
+				return v
+	return PackedFloat32Array()
 
 
 func setup(p_feed, p_quality: int) -> void:
@@ -62,6 +75,7 @@ func _ready() -> void:
 	world_root.name = "World"
 	add_child(world_root)
 	WorldBuilder.build(feed.terrain, world_root, quality)
+	_look = _look_arg()
 	_precip = WorldBuilder.precipitation(feed.terrain.preset, quality)
 	if _precip != null:
 		add_child(_precip)
@@ -340,6 +354,9 @@ func _process(delta: float) -> void:
 	else:
 		_spectate_camera(drones, me, delta)
 	_was_flying = mine != null
+	if _look.size() == 6:
+		cam.fov = 75.0
+		cam.look_at_from_position(Vector3(_look[0], _look[1], _look[2]), Vector3(_look[3], _look[4], _look[5]), Vector3.UP)
 	if _precip != null:
 		_precip.global_position = cam.global_position + cam.global_transform.basis.z * -12.0 + Vector3(0, 22, 0)
 	_update_post(mine)
