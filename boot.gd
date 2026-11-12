@@ -8,6 +8,9 @@ extends Node
 var _shot_path := ""
 var _shot_at := 0.0
 var _t := 0.0
+var _gpu_sum := 0.0   # время кадра GPU/CPU за последние 3 с до кадра (мс): FPS упирается в частоту экрана
+var _cpu_sum := 0.0
+var _frames := 0
 
 
 func _ready() -> void:
@@ -24,6 +27,8 @@ func _ready() -> void:
 		Settings.quality = int(args.quality)
 	_shot_path = args.get("shot", "")
 	_shot_at = float(args.get("shot-at", "8"))
+	if _shot_path != "":
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	var app: Node = load("res://ui/app.gd").new()
 	app.name = "App"
 	add_child(app)
@@ -49,10 +54,16 @@ func _process(delta: float) -> void:
 	if _shot_path == "":
 		return
 	_t += delta
+	if _t >= _shot_at - 3.0:
+		var vp := get_viewport().get_viewport_rid()
+		_gpu_sum += RenderingServer.viewport_get_measured_render_time_gpu(vp)
+		_cpu_sum += RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
+		_frames += 1
 	if _t >= _shot_at:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_shot_path)
 		print("screenshot: ", _shot_path, "  fps: ", Engine.get_frames_per_second(), "  draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
-			"  primitives: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
+			"  primitives: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
+			"  gpu ms: %.2f  cpu ms: %.2f" % [_gpu_sum / maxi(_frames, 1), _cpu_sum / maxi(_frames, 1)])
 		_shot_path = ""
 		get_tree().quit()
