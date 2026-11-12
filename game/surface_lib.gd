@@ -320,10 +320,10 @@ static func _snow(size: int, s: int, hgt: PackedFloat32Array, col: PackedByteArr
 		var f := fine[i] / 255.0
 		var h := b * 0.8 + f * 0.2
 		hgt[i] = h
-		var v := 0.47 + b * 0.06 + f * 0.03
+		var v := 0.5 + b * 0.04 + f * 0.015
 		_put(col, i, v * 0.98, v, v * 1.03)
 		var sp := spark[i] / 255.0
-		rgh[i] = int((0.55 if sp < 0.95 else 0.15) * 255.0 + f * 30.0)
+		rgh[i] = int((0.6 if sp < 0.97 else 0.35) * 255.0 + f * 25.0)
 
 
 ## Бетон (или асфальт): пятна и поры, швы опалубки, трещины.

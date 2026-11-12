@@ -11,7 +11,7 @@ const TREE_SHADER := preload("res://shaders/tree.gdshader")
 
 static func build(terrain: Terrain, root: Node3D, quality: int) -> void:
 	_environment(root, quality, terrain.preset)
-	_ground(terrain, root)
+	_ground(terrain, root, quality)
 	_trees(terrain, root)
 	_ruins(terrain, root)
 
@@ -273,7 +273,7 @@ static func precipitation(preset: MapPreset, quality: int) -> GPUParticles3D:
 	return p
 
 
-static func _ground(terrain: Terrain, root: Node3D) -> void:
+static func _ground(terrain: Terrain, root: Node3D, quality := 1) -> void:
 	var n := Terrain.N
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -310,16 +310,7 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 			st.add_index(i + n + 1)
 			st.add_index(i + n)
 	var mesh := st.commit()
-	var pal := palette(terrain.preset.biome)
-	var mat := ShaderMaterial.new()
-	mat.shader = TERRAIN_SHADER
-	mat.set_shader_parameter("detail_noise", SurfaceLib.noise_tex(0.02))
-	mat.set_shader_parameter("macro_noise", SurfaceLib.noise_tex(0.008))
-	for key in ["grass_a", "grass_b", "dirt", "rock", "snow"]:
-		var col: Color = pal[key]
-		mat.set_shader_parameter(key, Vector3(col.r, col.g, col.b))
-	mat.set_shader_parameter("snow_lo", pal.snow_lo + terrain.preset.base_lift)
-	mat.set_shader_parameter("snow_hi", pal.snow_hi + terrain.preset.base_lift)
+	var mat := ground_material(terrain.preset, quality)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
@@ -347,13 +338,41 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 			fst.add_vertex(v)
 	var far := MeshInstance3D.new()
 	far.mesh = fst.commit()
-	var fm := StandardMaterial3D.new()
-	fm.albedo_color = pal.far
-	fm.roughness = 1.0
-	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Тот же материал в упрощённом виде: тон и макро-пятна совпадают с краем карты.
+	var fm := mat.duplicate() as ShaderMaterial
+	fm.set_shader_parameter("far_mode", true)
 	far.material_override = fm
 	far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(far)
+
+
+const GROUND_LAYERS := [SurfaceLib.GRASS, SurfaceLib.DRY_GRASS, SurfaceLib.SOIL, SurfaceLib.MUD,
+	SurfaceLib.GRAVEL, SurfaceLib.ROCK, SurfaceLib.SNOW]
+
+
+## Материал земли: слои из библиотеки поверхностей, оттенки — палитра биома, погода — пресет.
+static func ground_material(preset: MapPreset, quality: int) -> ShaderMaterial:
+	var size := SurfaceLib.size_for(quality)
+	var pal := palette(preset.biome)
+	var mat := ShaderMaterial.new()
+	mat.shader = TERRAIN_SHADER
+	mat.set_shader_parameter("alb_arr", SurfaceLib.array(GROUND_LAYERS, 0, size))
+	mat.set_shader_parameter("nrm_arr", SurfaceLib.array(GROUND_LAYERS, 1, size))
+	mat.set_shader_parameter("orm_arr", SurfaceLib.array(GROUND_LAYERS, 2, size))
+	mat.set_shader_parameter("macro_noise", SurfaceLib.noise_tex(0.008))
+	for key in ["grass_a", "grass_b", "dirt", "rock", "snow"]:
+		var col: Color = pal[key]
+		mat.set_shader_parameter(key, Vector3(col.r, col.g, col.b))
+	mat.set_shader_parameter("snow_lo", pal.snow_lo + preset.base_lift)
+	mat.set_shader_parameter("snow_hi", pal.snow_hi + preset.base_lift)
+	var t := SurfaceLib.TILE
+	mat.set_shader_parameter("tiles", Vector4(1.0 / t[SurfaceLib.GRASS], 1.0 / t[SurfaceLib.SOIL], 1.0 / t[SurfaceLib.GRAVEL], 1.0 / t[SurfaceLib.ROCK]))
+	var rain := preset.precip == MapPreset.Precip.RAIN
+	var damp := preset.daytime == MapPreset.Daytime.FOG or preset.daytime == MapPreset.Daytime.OVERCAST
+	mat.set_shader_parameter("wetness", 0.85 if rain else (0.3 if damp and preset.biome != MapPreset.Biome.STEPPE else 0.0))
+	mat.set_shader_parameter("snow_cover", 0.35 if preset.precip == MapPreset.Precip.SNOW else 0.0)
+	mat.set_shader_parameter("lite", quality <= 0)
+	return mat
 
 
 ## Три вида деревьев одной высоты (~7 м до масштаба). Вершинный цвет: rgb — оттенок,
