@@ -65,8 +65,13 @@ static func _init_mats() -> void:
 	rough.width = 128
 	rough.height = 128
 	rough.seamless = true
+	var weave := _weave_textures()
 	var carbon := StandardMaterial3D.new()
-	carbon.albedo_color = Color(0.17, 0.18, 0.195)
+	carbon.albedo_color = Color(0.36, 0.37, 0.40)
+	carbon.albedo_texture = weave[0]
+	carbon.normal_enabled = true
+	carbon.normal_texture = weave[1]
+	carbon.normal_scale = 0.6
 	carbon.metallic = 0.2
 	carbon.roughness = 0.42
 	carbon.roughness_texture = rough
@@ -109,6 +114,80 @@ static func _init_mats() -> void:
 	payload.albedo_color = Color(0.34, 0.37, 0.25)
 	payload.roughness = 0.75
 	_mats.payload = payload
+	# Износ: пыль пятнами и царапины поверх всех «рабочих» поверхностей (кроме линзы и металла).
+	var dust := _dust_textures()
+	for key in ["carbon", "plastic", "skin", "dark", "payload"]:
+		var m: StandardMaterial3D = _mats[key]
+		m.detail_enabled = true
+		m.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		m.detail_uv_layer = BaseMaterial3D.DETAIL_UV_2
+		m.detail_albedo = dust[0]
+		m.detail_mask = dust[1]
+		m.uv2_triplanar = true
+		m.uv2_scale = Vector3(4, 4, 4)
+
+
+## Плетение карбона «твил 2×2»: тёмные и светлые пряди, рельеф по прядям. [albedo, normal]
+static func _weave_textures() -> Array:
+	var size := 128
+	var tow := 16
+	var hgt := PackedFloat32Array()
+	hgt.resize(size * size)
+	var col := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var i := x / tow
+			var j := y / tow
+			var over := ((i + j) / 2) % 2 == 0      # нить по x поверх или по y
+			var fx := float(x % tow) / tow
+			var fy := float(y % tow) / tow
+			var across := fy if over else fx           # поперёк пряди — выпуклость
+			var h := sin(across * PI)
+			hgt[y * size + x] = h
+			var sheen := 0.32 + 0.38 * h * (1.0 if over else 0.75)
+			col.set_pixel(x, y, Color(sheen, sheen, sheen * 1.04))
+	var nrm := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var dx := hgt[y * size + (x + 1) % size] - hgt[y * size + (x + size - 1) % size]
+			var dy := hgt[((y + 1) % size) * size + x] - hgt[((y + size - 1) % size) * size + x]
+			var n := Vector3(-dx * 1.5, dy * 1.5, 1.0).normalized()
+			nrm.set_pixel(x, y, Color(n.x * 0.5 + 0.5, n.y * 0.5 + 0.5, n.z * 0.5 + 0.5))
+	col.generate_mipmaps()
+	nrm.generate_mipmaps(true)
+	return [ImageTexture.create_from_image(col), ImageTexture.create_from_image(nrm)]
+
+
+## Пыль и царапины: [цвет пыли с альфой царапин, маска пятен].
+static func _dust_textures() -> Array:
+	var size := 256
+	var n := FastNoiseLite.new()
+	n.frequency = 0.05
+	n.fractal_octaves = 4
+	n.seed = 21
+	var mask := n.get_seamless_image(size, size)
+	var alb := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 33
+	for y in size:
+		for x in size:
+			var m := mask.get_pixel(x, y).r
+			alb.set_pixel(x, y, Color(0.46, 0.42, 0.36, smoothstep(0.6, 0.85, m) * 0.35))
+	# Царапины: тонкие светлые штрихи.
+	for k in 60:
+		var a := Vector2(rng.randf() * size, rng.randf() * size)
+		var d := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(8, 30)
+		for t in 30:
+			var p := a + d * t / 30.0
+			alb.set_pixel(posmod(int(p.x), size), posmod(int(p.y), size), Color(0.75, 0.74, 0.72, 0.6))
+	var mk := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var v := clampf(mask.get_pixel(x, y).r * 1.4 - 0.2, 0.0, 1.0)
+			mk.set_pixel(x, y, Color(v, v, v))
+	alb.generate_mipmaps()
+	mk.generate_mipmaps()
+	return [ImageTexture.create_from_image(alb), ImageTexture.create_from_image(mk)]
 
 
 # ---------------- Коптеры ----------------

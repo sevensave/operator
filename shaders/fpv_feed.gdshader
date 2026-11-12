@@ -76,14 +76,14 @@ void fragment() {
 	vec2 drop_off = vec2(0.0);
 	float drop_edge = 0.0;
 	if (rain > 0.0) {
-		vec2 g = uv0 * vec2(aspect, 1.0) * 9.0;
+		vec2 g = uv0 * vec2(aspect, 1.0) * 6.0;
 		vec2 cell = floor(g);
 		vec2 f = fract(g) - 0.5;
 		float h = hash(cell + floor(t * 0.08) * 3.1);
 		vec2 c = (vec2(hash(cell + 1.7), hash(cell + 4.3)) - 0.5) * 0.6;
-		float rad = 0.12 + 0.2 * hash(cell + 9.1);
+		float rad = 0.06 + 0.16 * hash(cell + 9.1);
 		float d = length(f - c);
-		float on = step(1.0 - rain * 0.55, h);
+		float on = step(1.0 - rain * 0.28, h);
 		float m = (1.0 - smoothstep(rad * 0.8, rad, d)) * on;
 		drop_off = (f - c) * m * 0.025;
 		drop_edge = smoothstep(rad * 0.6, rad, d) * m;
@@ -150,7 +150,7 @@ void fragment() {
 		// Грязь на линзе: пятна дымки, заметные против света.
 		float smear = smoothstep(0.55, 0.85, vnoise(uv0 * vec2(aspect, 1.0) * 3.0 + 7.0)) * dirt;
 		col = mix(col, col * 0.85 + vec3(0.06), smear * (0.3 + sun_pos.z * 0.7) * amount);
-		col *= 1.0 - drop_edge * 0.35;
+		col *= 1.0 - drop_edge * 0.12;
 	}
 
 	// Зерно и «снег»; шум матрицы сильнее в тенях и при усилении.

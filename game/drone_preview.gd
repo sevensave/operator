@@ -24,7 +24,10 @@ func _init(p_size := Vector2i(300, 170)) -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.62, 0.68, 0.76)
 	env.ambient_light_energy = 0.9
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX   # тот же тон, что в матче: мягкие блики, без пересвета
+	env.tonemap_agx_contrast = 1.25
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.92
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)

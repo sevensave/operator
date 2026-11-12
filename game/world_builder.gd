@@ -261,17 +261,75 @@ static func precipitation(preset: MapPreset, quality: int) -> GPUParticles3D:
 		pm.turbulence_influence_max = 0.15
 	p.process_material = pm
 	var q := QuadMesh.new()
-	q.size = Vector2(0.03, 0.9) if rain else Vector2(0.12, 0.12)
+	q.size = Vector2(0.025, 1.1) if rain else Vector2(0.1, 0.1)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_color = Color(0.75, 0.80, 0.88, 0.35) if rain else Color(0.95, 0.96, 1.0, 0.85)
+	m.albedo_color = Color(0.75, 0.80, 0.88, 0.3) if rain else Color(0.95, 0.96, 1.0, 0.85)
+	# Штрих дождя — с мягкими концами (смаз капли за выдержку), снежинка — мягкий кружок.
+	m.albedo_texture = _streak_texture(rain)
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y if rain else BaseMaterial3D.BILLBOARD_ENABLED
 	m.billboard_keep_scale = true
 	q.material = m
 	p.draw_pass_1 = q
 	p.name = "Precip"
+	if rain and quality >= 1:
+		p.add_child(_splashes(quality))
 	return p
+
+
+## Брызги дождя у земли: короткие белёсые всплески в полосе вокруг камеры (match_view держит
+## узел осадков над камерой — брызги опускаются к земле своим смещением).
+static func _splashes(quality: int) -> GPUParticles3D:
+	var s := GPUParticles3D.new()
+	s.amount = 500 if quality >= 2 else 260
+	s.lifetime = 0.35
+	s.local_coords = false
+	s.name = "Splashes"
+	s.visibility_aabb = AABB(Vector3(-40, -60, -40), Vector3(80, 80, 80))
+	s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(22, 0.1, 22)
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 35.0
+	pm.initial_velocity_min = 0.8
+	pm.initial_velocity_max = 1.8
+	pm.gravity = Vector3(0, -9.8, 0)
+	pm.scale_min = 0.5
+	pm.scale_max = 1.0
+	s.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.12, 0.08)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.albedo_color = Color(0.8, 0.84, 0.9, 0.45)
+	m.albedo_texture = _streak_texture(false)
+	q.material = m
+	s.draw_pass_1 = q
+	return s
+
+
+static var _streaks := {}
+
+
+static func _streak_texture(rain: bool) -> Texture2D:
+	if _streaks.has(rain):
+		return _streaks[rain]
+	var w := 8 if rain else 32
+	var h := 64 if rain else 32
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			var u := (x + 0.5) / w * 2.0 - 1.0
+			var v := (y + 0.5) / h * 2.0 - 1.0
+			var a := (1.0 - u * u) * (1.0 - v * v * v * v) if rain else clampf(1.0 - (u * u + v * v), 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
+	img.generate_mipmaps()
+	_streaks[rain] = ImageTexture.create_from_image(img)
+	return _streaks[rain]
 
 
 static func _ground(terrain: Terrain, root: Node3D, quality := 1) -> void:

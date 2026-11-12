@@ -117,8 +117,14 @@ static func smoke_material() -> StandardMaterial3D:
 		qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 		qm.vertex_color_use_as_albedo = true
-		qm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		# Дым освещается солнцем и вспышкой (не «наклейка»), мягко входит в землю и стены.
+		qm.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 		qm.albedo_texture = _puff_texture()
+		qm.proximity_fade_enabled = true
+		qm.proximity_fade_distance = 1.5
+		qm.backlight_enabled = true
+		qm.backlight = Color(0.35, 0.33, 0.3)
+		qm.roughness = 1.0
 		_smoke_draw_mat = qm
 	return _smoke_draw_mat
 
@@ -138,7 +144,12 @@ static func spark_material() -> StandardMaterial3D:
 	return _spark_draw_mat
 
 
-static func explosion(parent: Node, pos: Vector3, big: bool, quality: int) -> void:
+static var _flash_mat: StandardMaterial3D
+static var _dust_proc: ParticleProcessMaterial
+
+
+## ground — высота земли под взрывом (NAN — неизвестно): низкий подрыв поднимает пыль.
+static func explosion(parent: Node, pos: Vector3, big: bool, quality: int, ground := NAN) -> void:
 	var root := Node3D.new()
 	parent.add_child(root)
 	root.global_position = pos
@@ -154,7 +165,7 @@ static func explosion(parent: Node, pos: Vector3, big: bool, quality: int) -> vo
 
 	var light := OmniLight3D.new()
 	light.light_color = Color(1.0, 0.62, 0.28)
-	light.light_energy = 14.0
+	light.light_energy = 30.0
 	light.omni_range = 40.0 * k
 	light.shadow_enabled = false
 	root.add_child(light)
@@ -166,6 +177,43 @@ static func explosion(parent: Node, pos: Vector3, big: bool, quality: int) -> vo
 	ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ball.set_instance_shader_parameter("seed", randf())
 	root.add_child(ball)
+
+	# Вспышка: очень яркая и короткая (несколько кадров), пересвечивает камеру.
+	if _flash_mat == null:
+		_flash_mat = StandardMaterial3D.new()
+		_flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_flash_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_flash_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		_flash_mat.albedo_texture = _puff_texture()
+		_flash_mat.albedo_color = Color(1.0, 0.85, 0.6) * 6.0
+		_flash_mat.no_depth_test = false
+		_flash_mat.disable_fog = true
+	var flash := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(9, 9) * k
+	flash.mesh = fq
+	flash.material_override = _flash_mat
+	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(flash)
+
+	# Пыль от земли: кольцо, расходящееся по поверхности, если подрыв низко.
+	if quality >= 1 and not is_nan(ground) and pos.y - ground < 8.0:
+		var dust := GPUParticles3D.new()
+		dust.amount = 36 if big else 22
+		dust.lifetime = 5.0
+		dust.one_shot = true
+		dust.explosiveness = 0.9
+		dust.local_coords = false
+		dust.process_material = _dust()
+		var dq := QuadMesh.new()
+		dq.size = Vector2(3.5, 3.5) * k
+		dq.material = smoke_material()
+		dust.draw_pass_1 = dq
+		dust.position = Vector3(0, ground - pos.y + 0.4, 0)
+		dust.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		dust.emitting = true
+		root.add_child(dust)
 
 	# Кольцо ударной волны по земле/горизонтали.
 	var shock := MeshInstance3D.new()
@@ -246,10 +294,12 @@ static func explosion(parent: Node, pos: Vector3, big: bool, quality: int) -> vo
 	tw.tween_method(func(v: float): ball.set_instance_shader_parameter("age", v), 0.0, 1.0, 0.9)
 	tw.tween_property(shock, "scale", Vector3.ONE * 16.0 * k, 0.45).from(Vector3.ONE)
 	tw.tween_method(func(v: float): shock.set_instance_shader_parameter("age", v), 0.0, 1.0, 0.45)
-	tw.tween_property(light, "light_energy", 0.0, 0.7)
+	tw.tween_property(light, "light_energy", 0.0, 0.7).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
+	tw.tween_property(flash, "scale", Vector3.ONE * 0.2, 0.12).from(Vector3.ONE).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(func():
 		ball.queue_free()
 		shock.queue_free()
+		flash.queue_free()
 		light.queue_free())
 	# Подпалина держится ~25 с, потом тает; дым к тому времени давно рассеялся.
 	var tw2 := root.create_tween()
@@ -299,6 +349,41 @@ static func smoke_column(parent: Node3D, offset: Vector3, quality: int) -> GPUPa
 	p.visibility_aabb = AABB(Vector3(-30, -5, -30), Vector3(60, 90, 60))
 	parent.add_child(p)
 	return p
+
+
+static func _dust() -> ParticleProcessMaterial:
+	if _dust_proc:
+		return _dust_proc
+	var m := ParticleProcessMaterial.new()
+	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+	m.emission_ring_axis = Vector3.UP
+	m.emission_ring_radius = 1.5
+	m.emission_ring_inner_radius = 0.5
+	m.emission_ring_height = 0.2
+	m.direction = Vector3(1, 0.15, 0)
+	m.spread = 180.0
+	m.flatness = 0.85
+	m.initial_velocity_min = 6.0
+	m.initial_velocity_max = 13.0
+	m.damping_min = 3.0
+	m.damping_max = 5.0
+	m.gravity = Vector3(0, 0.3, 0)
+	m.scale_min = 0.8
+	m.scale_max = 1.6
+	var curve := Curve.new()
+	curve.add_point(Vector2(0, 0.6))
+	curve.add_point(Vector2(1, 2.6))
+	var ct := CurveTexture.new()
+	ct.curve = curve
+	m.scale_curve = ct
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.42, 0.37, 0.3, 0.75))
+	grad.set_color(1, Color(0.5, 0.47, 0.42, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = grad
+	m.color_ramp = gt
+	_dust_proc = m
+	return m
 
 
 static func _debris() -> ParticleProcessMaterial:
@@ -399,15 +484,20 @@ static var _puff: Texture2D
 static func _puff_texture() -> Texture2D:
 	if _puff:
 		return _puff
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 1))
-	g.set_color(1, Color(1, 1, 1, 0))
-	var t := GradientTexture2D.new()
-	t.gradient = g
-	t.fill = GradientTexture2D.FILL_RADIAL
-	t.fill_from = Vector2(0.5, 0.5)
-	t.fill_to = Vector2(0.5, 0.0)
-	t.width = 64
-	t.height = 64
-	_puff = t
-	return t
+	# Клуб дыма: радиальный спад, изрезанный шумом (клубящаяся кромка), без жёсткого круга.
+	var size := 128
+	var n := FastNoiseLite.new()
+	n.frequency = 0.045
+	n.fractal_octaves = 4
+	n.seed = 9
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var d := Vector2(x - size * 0.5 + 0.5, y - size * 0.5 + 0.5).length() / (size * 0.5)
+			var v := n.get_noise_2d(x, y) * 0.5 + 0.5
+			var a := clampf((1.0 - d * d) * (0.55 + v * 0.9) - 0.15, 0.0, 1.0)
+			var shade := 0.75 + v * 0.35 - d * 0.15
+			img.set_pixel(x, y, Color(shade, shade, shade, smoothstep(0.0, 0.7, a)))
+	img.generate_mipmaps()
+	_puff = ImageTexture.create_from_image(img)
+	return _puff

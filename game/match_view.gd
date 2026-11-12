@@ -368,6 +368,10 @@ func _process(delta: float) -> void:
 		cam.look_at_from_position(Vector3(_look[0], _look[1], _look[2]), Vector3(_look[3], _look[4], _look[5]), Vector3.UP)
 	if _precip != null:
 		_precip.global_position = cam.global_position + cam.global_transform.basis.z * -12.0 + Vector3(0, 22, 0)
+		var splash := _precip.get_node_or_null("Splashes") as Node3D
+		if splash != null:
+			var c := cam.global_position
+			splash.global_position = Vector3(c.x, feed.terrain.height_at(c.x, c.z) + 0.05, c.z)
 	_update_post(mine)
 	_update_audio(mine)
 	_update_osd(mine, me, drones)
@@ -802,7 +806,7 @@ func _on_event(ev: Dictionary) -> void:
 	match ev.t:
 		"boom":
 			var pos: Vector3 = ev.pos
-			Fx.explosion(self, pos, ev.kind == SimConst.Kind.PLANE, quality)
+			Fx.explosion(self, pos, ev.kind == SimConst.Kind.PLANE, quality, feed.terrain.height_at(pos.x, pos.z))
 			if ev.pid == feed.my_pid:
 				hit_flash = 0.9
 				shake = 0.6
