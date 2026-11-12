@@ -102,7 +102,7 @@ void fragment() {
 
 	// Смаз по угловой скорости: несколько выборок вдоль сдвига кадра и по кругу при вращении.
 	float bl = length(blur_vec) + abs(roll_rate) * 0.5;
-	if (bl > 0.0005 && amount > 0.0) {
+	if (bl > 0.0005 && amount > 0.6) {
 		vec3 acc = col;
 		for (int i = 1; i <= 5; i++) {
 			float k = (float(i) / 5.0 - 0.5);
@@ -113,6 +113,7 @@ void fragment() {
 	}
 
 	if (amount > 0.0) {
+		if (amount > 0.6) {   // полный фильтр: дорогие выборки (перешарп, ореол, блоки сжатия)
 		// Перешарп (дешёвый сенсор): нерезкая маска от размытого мипа.
 		vec3 blur1 = tap(uv, lod + 1.5);
 		col += (col - blur1) * 0.55 * amount;
@@ -124,6 +125,7 @@ void fragment() {
 		vec3 bavg = tap(0.5 + ((blk - 0.5) * asp * lens_s * (1.0 + lens_k * dot((blk - 0.5) * asp, (blk - 0.5) * asp))) / asp, 3.0);
 		float cmp = clamp(compress + bad * 0.6 + bl * 12.0, 0.0, 1.0) * amount;
 		col = mix(col, bavg + floor((col - bavg) * 10.0 + 0.5) / 10.0, cmp * 0.55);
+		}
 		// Узкий диапазон: подъём чёрного, мягкое «плечо», холодноватый баланс.
 		float lum0 = dot(col, vec3(0.299, 0.587, 0.114));
 		col = mix(col, vec3(lum0), 0.08 * amount);

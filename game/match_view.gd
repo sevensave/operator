@@ -108,7 +108,8 @@ func _ready() -> void:
 	_fov = Settings.fov
 	cam.near = 0.05
 	cam.far = 4000.0
-	cam.attributes = WorldBuilder.camera_attributes(feed.terrain.preset.daytime)
+	if quality >= 1:   # на низком — ручная экспозиция (без прохода замера яркости)
+		cam.attributes = WorldBuilder.camera_attributes(feed.terrain.preset.daytime)
 	add_child(cam)
 	cam.current = true
 	WorldBuilder.apply_viewport(get_viewport(), quality, Settings.render_scale)
@@ -504,6 +505,8 @@ func _ruin_shelter(n: Node3D) -> void:
 func _update_post(d: DroneState) -> void:
 	post.visible = not _clean
 	var amount: float = [0.0, 0.5, 1.0][clampi(Settings.camera_filter, 0, 2)]
+	if quality <= 0:
+		amount = minf(amount, 0.5)   # низкое качество: только дешёвая часть фильтра
 	var fpv := d != null and not _chase_mode and _look.is_empty()
 	if not fpv:
 		amount *= 0.3

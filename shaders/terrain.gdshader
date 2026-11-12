@@ -73,6 +73,18 @@ void fragment() {
 		ALBEDO = c * (0.9 + m25 * 0.2);
 		ROUGHNESS = 1.0;
 		SPECULAR = 0.2;
+	} else if (lite) {
+		// Низкое качество: 4 выборки, без height-blend, нормалей и трипланара (цена прежней земли).
+		vec3 g = texture(alb_arr, vec3(p.xz * tiles.x, 0.0)).rgb;
+		vec3 c = grass * g * 2.0;
+		c = mix(c, dry * g * 2.0, w_dry * 0.7);
+		float soil = clamp(w_soil * 0.8 + w_mud, 0.0, 1.0);
+		c = mix(c, dirt * texture(alb_arr, vec3(p.xz * tiles.y, 2.0)).rgb * 2.0, soil);
+		if (w_rock > 0.01) c = mix(c, rock * texture(alb_arr, vec3(p.xz * tiles.w, 5.0)).rgb * 2.0, w_rock);
+		c = mix(c, snow, w_snow);
+		ALBEDO = c * (0.86 + m25 * 0.28) * (1.0 - wetness * 0.25);
+		ROUGHNESS = mix(0.9, 0.6, wetness);
+		SPECULAR = 0.3;
 	} else {
 
 	vec2 uvg = p.xz * tiles.x;

@@ -85,7 +85,14 @@ void sky() {
 	col *= sky_energy;
 
 	// Объёмные облака: слой между высотами 1 и 1,7 (в условных единицах), несколько срезов.
-	if (h > 0.0 && cloud_cover > 0.01) {
+	if (h > 0.0 && cloud_cover > 0.01 && cloud_steps <= 1) {
+		// Низкое качество: один слой без затенения к свету (цена прежнего неба).
+		vec2 uv = d.xz / (h + 0.09) * 0.55 + vec2(cloud_seed) + TIME * cloud_drift;
+		float n = fbm(uv, AT_CUBEMAP_PASS ? 3 : 5);
+		float c = smoothstep(0.92 - cloud_cover - 0.08, 1.14 - cloud_cover, n) * smoothstep(0.0, 0.14, h);
+		vec3 cc = mix(cloud_shade, cloud_color, clamp(n * 1.4 - 0.2, 0.0, 1.0)) * sky_energy;
+		col = mix(col, cc, c * 0.92);
+	} else if (h > 0.0 && cloud_cover > 0.01) {
 		int steps = AT_CUBEMAP_PASS ? 3 : cloud_steps;
 		int oct = AT_CUBEMAP_PASS ? 3 : 5;
 		vec2 drift = vec2(cloud_seed) + TIME * cloud_drift;

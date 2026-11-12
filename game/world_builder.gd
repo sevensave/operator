@@ -104,7 +104,7 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	sky_mat.set_shader_parameter("moon", at.get("moon", 0.0))
 	sky_mat.set_shader_parameter("haze", at.haze)
 	sky_mat.set_shader_parameter("sky_energy", at.sky_e)
-	sky_mat.set_shader_parameter("cloud_steps", [3, 6, 8][clampi(quality, 0, 2)])
+	sky_mat.set_shader_parameter("cloud_steps", [1, 6, 8][clampi(quality, 0, 2)])
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	# Облака движутся (TIME) — отражения обновляем постепенно.
@@ -130,11 +130,15 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	env.fog_sun_scatter = at.get("scatter", 0.15)
 	env.fog_sky_affect = 0.35 if preset.daytime != MapPreset.Daytime.FOG else 0.7
 	env.glow_enabled = true
-	env.glow_normalized = true
-	env.glow_intensity = 0.5 if not night else 0.8
-	env.glow_bloom = 0.04
-	env.glow_hdr_threshold = 1.2
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	if quality >= 1:
+		env.glow_normalized = true
+		env.glow_intensity = 0.5 if not night else 0.8
+		env.glow_bloom = 0.04
+		env.glow_hdr_threshold = 1.2
+		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	else:   # низкое: прежнее свечение (дешевле)
+		env.glow_intensity = 0.6 if not night else 0.9
+		env.glow_bloom = 0.05
 	# Приглушённая нейтральная гамма: без «мультяшной» насыщенности.
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.9 if not night else 0.6
@@ -225,7 +229,7 @@ static func apply_viewport(vp: Viewport, quality: int, render_scale := 1.0) -> v
 	var sc := clampf(render_scale, 0.5, 1.0)
 	vp.scaling_3d_scale = sc
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.99 else Viewport.SCALING_3D_MODE_BILINEAR
-	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_4X if quality <= 1 else Viewport.ANISOTROPY_16X
+	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_2X if quality <= 0 else (Viewport.ANISOTROPY_4X if quality == 1 else Viewport.ANISOTROPY_16X)
 	var rs := RenderingServer
 	if quality >= 2:
 		rs.environment_set_volumetric_fog_volume_size(64, 64)
