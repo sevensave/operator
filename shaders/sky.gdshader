@@ -1,6 +1,6 @@
 shader_type sky;
-// Небо карты: градиент, диск солнца или луны, процедурные облака со сдвигом по ветру,
-// звёзды ночью. Всё из шума, без текстур.
+// Небо карты: градиент с рассеянием у горизонта (дымка ярче к солнцу), диск солнца или луны,
+// объёмные облака (несколько срезов слоя с затенением к свету), звёзды ночью. Всё из шума.
 
 uniform vec3 top_color = vec3(0.30, 0.45, 0.66);
 uniform vec3 horizon_color = vec3(0.70, 0.74, 0.76);
@@ -13,6 +13,9 @@ uniform float cloud_seed = 0.0;
 uniform float stars : hint_range(0.0, 1.0) = 0.0;
 uniform float sun_disk = 1.0;      // 0 — не рисовать диск (пасмурно)
 uniform float moon = 0.0;          // 1 — диск луны вместо солнца
+uniform float haze = 0.5;          // сила рассеяния у горизонта и вокруг солнца
+uniform float sky_energy = 1.0;    // общая яркость неба (соотношение с солнцем)
+uniform int cloud_steps = 6;       // срезов облачного слоя (качество)
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -39,39 +42,89 @@ float fbm(vec2 p, int oct) {
 	return v;
 }
 
+// Плотность облака в точке слоя: y01 — 0 у основания, 1 у верхней кромки.
+// Кромки слоя «съедают» плотность — получаются округлые клубы, а не плоская плёнка.
+float cloud_density(vec2 p, float y01, int oct) {
+	float n = fbm(p + vec2(y01 * 0.35, -y01 * 0.2), oct);
+	float shape = clamp(4.0 * y01 * (1.0 - y01), 0.0, 1.0);
+	float edge = 1.0 - cloud_cover;
+	float th = edge + (1.0 - shape) * 0.22 - 0.08;
+	// Сплошная облачность: при покрытии > 0,75 слой затягивает всё небо, остаётся фактура.
+	float deck = clamp((cloud_cover - 0.75) * 4.0, 0.0, 1.0) * (0.35 + 0.4 * n);
+	return clamp(max((n - th) * 4.5, deck), 0.0, 1.0);
+}
+
+// Фазовая функция Хеньи — Гринштейна: вперёд рассеивающая дымка вокруг солнца.
+float hg(float mu, float g) {
+	float g2 = g * g;
+	return (1.0 - g2) / (12.566 * pow(max(1.0 + g2 - 2.0 * g * mu, 1e-4), 1.5));
+}
+
 void sky() {
 	vec3 d = EYEDIR;
 	float h = d.y;
-	vec3 col = mix(horizon_color, top_color, pow(clamp(h, 0.0, 1.0), 0.45));
-	col = mix(col, ground_color, smoothstep(0.0, -0.12, h));
-
-	// Солнце или луна: диск + ореол.
+	float hp = clamp(h, 0.0, 1.0);
+	// Небо темнее и насыщеннее к зениту, у горизонта — светлая полоса воздушной толщи.
+	vec3 col = mix(horizon_color, top_color, 1.0 - pow(1.0 - hp, 5.0));
+	col = mix(col, horizon_color * 1.08, exp(-hp * 40.0) * 0.6);
+	vec3 lc = vec3(0.0);
+	float mu = 0.0;
 	if (LIGHT0_ENABLED) {
-		float sd = dot(d, LIGHT0_DIRECTION);
-		vec3 lc = LIGHT0_COLOR * LIGHT0_ENERGY;
-		float glow = pow(max(sd, 0.0), 6.0) * 0.18 + pow(max(sd, 0.0), 60.0) * 0.35;
-		col += lc * glow * (1.0 - moon * 0.6) * mix(0.35, 1.0, sun_disk);
+		lc = LIGHT0_COLOR * LIGHT0_ENERGY;
+		mu = dot(d, LIGHT0_DIRECTION);
+		// Рассеяние: широкое (Рэлей ≈ подсветка всей половины неба к солнцу) и узкое (Ми — ореол).
+		float air = exp(-hp * 6.0);
+		float wide = (0.5 + 0.5 * mu) * air * 0.25;
+		float mie = hg(mu, 0.76) * (0.35 + 0.65 * air);
+		col += lc * haze * (wide + mie * 0.55) * (1.0 - moon * 0.75);
+		col += lc * (pow(max(mu, 0.0), 60.0) * 0.25) * mix(0.3, 1.0, sun_disk) * (1.0 - moon * 0.6);
 		float r = moon > 0.5 ? 0.9997 : 0.99965;
-		float disk = smoothstep(r, r + 0.00012, sd) * sun_disk;
-		col = mix(col, lc * (moon > 0.5 ? 1.6 : 6.0), disk);
+		float disk = smoothstep(r, r + 0.00012, mu) * sun_disk * smoothstep(-0.01, 0.01, h);
+		col = mix(col, lc * (moon > 0.5 ? 1.6 : 8.0), disk);
+	}
+	col *= sky_energy;
+
+	// Объёмные облака: слой между высотами 1 и 1,7 (в условных единицах), несколько срезов.
+	if (h > 0.0 && cloud_cover > 0.01) {
+		int steps = AT_CUBEMAP_PASS ? 3 : cloud_steps;
+		int oct = AT_CUBEMAP_PASS ? 3 : 5;
+		vec2 drift = vec2(cloud_seed) + TIME * cloud_drift;
+		float inv = 1.0 / (h + 0.09);
+		vec2 sun2 = LIGHT0_ENABLED ? LIGHT0_DIRECTION.xz : vec2(0.0);
+		float trans = 1.0;
+		vec3 acc = vec3(0.0);
+		for (int i = 0; i < steps; i++) {
+			float y01 = (float(i) + 0.5) / float(steps);
+			float t = (1.0 + y01 * 0.7) * inv;
+			vec2 p = d.xz * t * 0.55 + drift;
+			float den = cloud_density(p, y01, oct);
+			if (den <= 0.001) continue;
+			// Затенение к свету: две пробы вверх-к-солнцу.
+			float ld = 0.0;
+			if (LIGHT0_ENABLED) {
+				ld += cloud_density(p + sun2 * 0.05, min(y01 + 0.2, 1.0), 3);
+				ld += cloud_density(p + sun2 * 0.12, min(y01 + 0.45, 1.0), 2) * 0.7;
+			}
+			float lit = exp(-ld * 1.6) * (0.55 + 0.45 * y01);
+			lit = mix(lit, 0.55 + 0.2 * den, clamp((cloud_cover - 0.75) * 4.0, 0.0, 1.0) * 0.7);   // сплошная облачность — ровный серый
+			float powder = 1.0 - exp(-den * 2.0);
+			vec3 c = mix(cloud_shade, cloud_color, lit) * sky_energy;
+			c += lc * hg(mu, 0.55) * lit * powder * 0.5 * (1.0 - moon * 0.7);
+			float a = 1.0 - exp(-den * 2.4 * 6.0 / float(steps));
+			acc += trans * a * c;
+			trans *= 1.0 - a;
+			if (trans < 0.02) break;
+		}
+		// Далёкие облака тонут в дымке горизонта.
+		float far = smoothstep(0.0, 0.16, h);
+		float cov = (1.0 - trans) * far;
+		vec3 cc = acc / max(1.0 - trans, 1e-3);
+		cc = mix(horizon_color * sky_energy, cc, smoothstep(0.0, 0.35, h) * 0.6 + 0.4);
+		col = mix(col, cc, cov * 0.96);
 	}
 
-	// Облака: проекция на плоскость, рыхлый fbm.
-	if (h > 0.0 && cloud_cover > 0.01) {
-		vec2 uv = d.xz / (h + 0.09) * 0.55 + vec2(cloud_seed) + TIME * cloud_drift;
-		int oct = AT_CUBEMAP_PASS ? 3 : 5;
-		float n = fbm(uv, oct);
-		float edge = 1.0 - cloud_cover;
-		float c = smoothstep(edge - 0.08, edge + 0.22, n) * smoothstep(0.0, 0.14, h);
-		// Подсветка с солнечной стороны: сдвиг выборки к свету.
-		float lit = 1.0;
-		if (LIGHT0_ENABLED && !AT_CUBEMAP_PASS) {
-			float n2 = fbm(uv + LIGHT0_DIRECTION.xz * 0.06, 4);
-			lit = clamp(1.0 - (n2 - n) * 4.0, 0.4, 1.3);
-		}
-		vec3 cc = mix(cloud_shade, cloud_color, clamp(n * 1.4 - 0.2, 0.0, 1.0)) * lit;
-		col = mix(col, cc, c * 0.92);
-	}
+	// Земля под горизонтом (дальше дальней земли) — цвет дымки.
+	col = mix(col, ground_color * sky_energy, smoothstep(0.0, -0.12, h));
 
 	// Звёзды.
 	if (stars > 0.0 && h > 0.0 && !AT_CUBEMAP_PASS) {

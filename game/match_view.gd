@@ -85,8 +85,10 @@ func _ready() -> void:
 	cam.fov = Settings.fov
 	cam.near = 0.05
 	cam.far = 4000.0
+	cam.attributes = WorldBuilder.camera_attributes(feed.terrain.preset.daytime)
 	add_child(cam)
 	cam.current = true
+	WorldBuilder.apply_viewport(get_viewport(), quality)
 
 	var post_layer := CanvasLayer.new()
 	post_layer.layer = 0

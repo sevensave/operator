@@ -17,38 +17,47 @@ static func build(terrain: Terrain, root: Node3D, quality: int) -> void:
 
 
 ## Наборы времени суток/погоды: свет, небо, туман, экспозиция.
+## Соотношение солнце/небо — как у реальной освещённости: ясным днём прямой свет в 4–5 раз
+## сильнее рассеянного, в пасмурно/туман почти весь свет — от неба, ночью луна слабая и холодная.
+## ang — угловой размер источника (мягкость теней), haze — рассеяние у горизонта,
+## ae_iso/ae_scale — опорная чувствительность и цель автоэкспозиции FPV-камеры.
 static func atmosphere(daytime: int) -> Dictionary:
 	match daytime:
 		MapPreset.Daytime.DAWN:
-			return {"elev": 9.0, "sun": Color(1.0, 0.72, 0.50), "energy": 1.25, "top": Color(0.28, 0.36, 0.56),
-				"horizon": Color(0.95, 0.70, 0.55), "fog": Color(0.80, 0.66, 0.58), "density": 0.0011,
-				"ambient": Color(0.55, 0.50, 0.55), "amb_energy": 0.5, "sky_amb": 0.7, "exposure": 1.05,
-				"clouds": 0.42, "cloud": Color(1.0, 0.80, 0.68), "cloud_shade": Color(0.48, 0.42, 0.50), "vol": 0.006}
+			return {"elev": 9.0, "sun": Color(1.0, 0.70, 0.48), "energy": 1.7, "top": Color(0.26, 0.34, 0.52),
+				"horizon": Color(0.92, 0.70, 0.56), "fog": Color(0.78, 0.66, 0.60), "density": 0.0011,
+				"ambient": Color(0.55, 0.50, 0.55), "amb_energy": 0.45, "sky_amb": 0.75, "exposure": 1.0,
+				"clouds": 0.42, "cloud": Color(1.0, 0.80, 0.68), "cloud_shade": Color(0.46, 0.42, 0.50), "vol": 0.006,
+				"ang": 0.6, "haze": 0.9, "sky_e": 1.0, "scatter": 0.35, "ae_lum": 0.30, "ae_up": 1.5}
 		MapPreset.Daytime.DUSK:
-			return {"elev": 7.0, "sun": Color(1.0, 0.55, 0.32), "energy": 1.3, "top": Color(0.20, 0.22, 0.40),
-				"horizon": Color(0.98, 0.55, 0.35), "fog": Color(0.70, 0.50, 0.42), "density": 0.0010,
-				"ambient": Color(0.50, 0.42, 0.48), "amb_energy": 0.5, "sky_amb": 0.7, "exposure": 1.08,
-				"clouds": 0.5, "cloud": Color(1.0, 0.62, 0.42), "cloud_shade": Color(0.36, 0.30, 0.40), "vol": 0.006}
+			return {"elev": 7.0, "sun": Color(1.0, 0.55, 0.32), "energy": 1.7, "top": Color(0.20, 0.22, 0.40),
+				"horizon": Color(0.96, 0.56, 0.38), "fog": Color(0.68, 0.50, 0.44), "density": 0.0010,
+				"ambient": Color(0.50, 0.42, 0.48), "amb_energy": 0.45, "sky_amb": 0.75, "exposure": 1.0,
+				"clouds": 0.5, "cloud": Color(1.0, 0.62, 0.42), "cloud_shade": Color(0.34, 0.29, 0.38), "vol": 0.006,
+				"ang": 0.6, "haze": 1.0, "sky_e": 0.95, "scatter": 0.4, "ae_lum": 0.28, "ae_up": 1.5}
 		MapPreset.Daytime.OVERCAST:
-			return {"elev": 42.0, "sun": Color(0.86, 0.89, 0.93), "energy": 0.6, "top": Color(0.50, 0.54, 0.58),
+			return {"elev": 42.0, "sun": Color(0.86, 0.89, 0.93), "energy": 0.4, "top": Color(0.50, 0.54, 0.58),
 				"horizon": Color(0.70, 0.72, 0.73), "fog": Color(0.62, 0.64, 0.66), "density": 0.0016,
-				"ambient": Color(0.62, 0.65, 0.70), "amb_energy": 0.85, "sky_amb": 0.8, "exposure": 1.02,
-				"clouds": 0.88, "cloud": Color(0.80, 0.81, 0.83), "cloud_shade": Color(0.46, 0.48, 0.52), "vol": 0.008, "disk": 0.0}
+				"ambient": Color(0.62, 0.65, 0.70), "amb_energy": 1.0, "sky_amb": 0.9, "exposure": 1.0,
+				"clouds": 0.9, "cloud": Color(0.76, 0.77, 0.78), "cloud_shade": Color(0.50, 0.51, 0.52), "vol": 0.008, "disk": 0.0,
+				"ang": 6.0, "haze": 0.15, "sky_e": 1.0, "scatter": 0.0, "ae_lum": 0.40, "ae_up": 1.4}
 		MapPreset.Daytime.FOG:
-			return {"elev": 28.0, "sun": Color(0.96, 0.93, 0.86), "energy": 0.75, "top": Color(0.62, 0.65, 0.68),
+			return {"elev": 28.0, "sun": Color(0.96, 0.93, 0.86), "energy": 0.55, "top": Color(0.62, 0.65, 0.68),
 				"horizon": Color(0.78, 0.79, 0.80), "fog": Color(0.74, 0.76, 0.77), "density": 0.0042,
-				"ambient": Color(0.70, 0.72, 0.74), "amb_energy": 0.8, "sky_amb": 0.8, "exposure": 1.0,
-				"clouds": 0.7, "cloud": Color(0.88, 0.89, 0.90), "cloud_shade": Color(0.62, 0.64, 0.66), "vol": 0.008, "disk": 0.3}
+				"ambient": Color(0.70, 0.72, 0.74), "amb_energy": 0.9, "sky_amb": 0.85, "exposure": 1.0,
+				"clouds": 0.7, "cloud": Color(0.88, 0.89, 0.90), "cloud_shade": Color(0.62, 0.64, 0.66), "vol": 0.008, "disk": 0.3,
+				"ang": 3.0, "haze": 0.3, "sky_e": 1.0, "scatter": 0.25, "ae_lum": 0.45, "ae_up": 1.3}
 		MapPreset.Daytime.NIGHT:
-			return {"elev": 38.0, "sun": Color(0.55, 0.66, 1.0), "energy": 0.5, "top": Color(0.02, 0.03, 0.08),
+			return {"elev": 38.0, "sun": Color(0.55, 0.66, 1.0), "energy": 0.35, "top": Color(0.02, 0.03, 0.08),
 				"horizon": Color(0.10, 0.13, 0.22), "fog": Color(0.10, 0.12, 0.19), "density": 0.0011,
-				"ambient": Color(0.26, 0.32, 0.52), "amb_energy": 0.7, "sky_amb": 0.3, "exposure": 1.55,
+				"ambient": Color(0.26, 0.32, 0.52), "amb_energy": 0.6, "sky_amb": 0.3, "exposure": 1.5,
 				"clouds": 0.3, "cloud": Color(0.22, 0.25, 0.34), "cloud_shade": Color(0.06, 0.07, 0.11), "vol": 0.004,
-				"stars": 1.0, "moon": 1.0}
-	return {"elev": 48.0, "sun": Color(1.0, 0.95, 0.86), "energy": 1.6, "top": Color(0.28, 0.44, 0.66),
-		"horizon": Color(0.70, 0.74, 0.76), "fog": Color(0.64, 0.68, 0.70), "density": 0.0007,
-		"ambient": Color(0.60, 0.64, 0.66), "amb_energy": 0.55, "sky_amb": 0.85, "exposure": 0.95,
-		"clouds": 0.35, "cloud": Color(0.98, 0.98, 0.97), "cloud_shade": Color(0.60, 0.64, 0.70), "vol": 0.003}
+				"stars": 1.0, "moon": 1.0, "ang": 0.5, "haze": 0.2, "sky_e": 1.0, "scatter": 0.05, "ae_lum": 0.07, "ae_up": 1.0}
+	return {"elev": 48.0, "sun": Color(1.0, 0.95, 0.87), "energy": 2.2, "top": Color(0.26, 0.42, 0.66),
+		"horizon": Color(0.70, 0.75, 0.80), "fog": Color(0.64, 0.68, 0.72), "density": 0.0007,
+		"ambient": Color(0.60, 0.64, 0.66), "amb_energy": 0.5, "sky_amb": 0.9, "exposure": 1.0,
+		"clouds": 0.35, "cloud": Color(0.98, 0.98, 0.97), "cloud_shade": Color(0.58, 0.62, 0.68), "vol": 0.003,
+		"ang": 0.55, "haze": 0.6, "sky_e": 1.0, "scatter": 0.2, "ae_lum": 0.50, "ae_up": 1.4}
 
 
 ## Палитры биомов для земли, деревьев и дальнего пола.
@@ -77,6 +86,7 @@ static func palette(biome: int) -> Dictionary:
 
 static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	var at := atmosphere(preset.daytime)
+	var night := preset.daytime == MapPreset.Daytime.NIGHT
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = SKY_SHADER
 	sky_mat.set_shader_parameter("top_color", at.top)
@@ -91,11 +101,14 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	sky_mat.set_shader_parameter("stars", at.get("stars", 0.0))
 	sky_mat.set_shader_parameter("sun_disk", at.get("disk", 1.0))
 	sky_mat.set_shader_parameter("moon", at.get("moon", 0.0))
+	sky_mat.set_shader_parameter("haze", at.haze)
+	sky_mat.set_shader_parameter("sky_energy", at.sky_e)
+	sky_mat.set_shader_parameter("cloud_steps", [3, 6, 8][clampi(quality, 0, 2)])
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	# Облака движутся (TIME) — отражения обновляем постепенно и в малом разрешении.
+	# Облака движутся (TIME) — отражения обновляем постепенно.
 	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
-	sky.radiance_size = Sky.RADIANCE_SIZE_64
+	sky.radiance_size = Sky.RADIANCE_SIZE_256 if quality >= 1 else Sky.RADIANCE_SIZE_64
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
@@ -103,33 +116,53 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	env.ambient_light_color = at.ambient
 	env.ambient_light_sky_contribution = at.sky_amb
 	env.ambient_light_energy = at.amb_energy
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	# AgX: мягкое плечо и честное выцветание пересветов, как у сенсора дешёвой камеры.
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = at.exposure
-	env.tonemap_white = 6.0
+	env.tonemap_agx_white = 8.0
+	env.tonemap_agx_contrast = 1.35
 	env.fog_enabled = true
 	env.fog_light_color = at.fog
 	env.fog_density = at.density
-	env.fog_aerial_perspective = 0.5
+	env.fog_aerial_perspective = 0.65
+	env.fog_sun_scatter = at.get("scatter", 0.15)
 	env.fog_sky_affect = 0.35 if preset.daytime != MapPreset.Daytime.FOG else 0.7
 	env.glow_enabled = true
-	env.glow_intensity = 0.6 if preset.daytime != MapPreset.Daytime.NIGHT else 0.9
-	env.glow_bloom = 0.05
+	env.glow_normalized = true
+	env.glow_intensity = 0.5 if not night else 0.8
+	env.glow_bloom = 0.04
+	env.glow_hdr_threshold = 1.2
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	# Приглушённая нейтральная гамма: без «мультяшной» насыщенности.
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08 if preset.daytime != MapPreset.Daytime.NIGHT else 0.7
-	env.adjustment_contrast = 1.12
-	if quality >= 2:
+	env.adjustment_saturation = 0.9 if not night else 0.6
+	env.adjustment_contrast = 1.0
+	if quality >= 1:
+		env.ssao_enabled = true
+		env.ssao_radius = 1.6
+		env.ssao_intensity = 1.6
+		env.ssao_power = 1.4
+		env.ssao_light_affect = 0.15
+		env.ssil_enabled = true
+		env.ssil_radius = 4.0
+		env.ssil_intensity = 0.7
 		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = at.vol
+		env.volumetric_fog_density = at.vol * (1.0 if quality >= 2 else 0.8)
 		env.volumetric_fog_albedo = (at.fog as Color).lightened(0.2)
-		env.volumetric_fog_length = 220.0
+		env.volumetric_fog_length = 220.0 if quality >= 2 else 140.0
+		env.volumetric_fog_detail_spread = 2.0
 		env.volumetric_fog_anisotropy = 0.6
 		env.volumetric_fog_ambient_inject = 0.7   # туман подсвечен небом, а не только солнцем — не темнеет
-		env.ssao_enabled = true
-		env.ssao_radius = 1.5
-		env.ssil_enabled = true
-		env.ssil_intensity = 0.6
-	if quality >= 1:
-		env.sdfgi_enabled = false
+		env.volumetric_fog_sky_affect = 0.0
+	if quality >= 2:
+		env.sdfgi_enabled = true
+		env.sdfgi_use_occlusion = true
+		env.sdfgi_read_sky_light = true
+		env.sdfgi_cascades = 4
+		env.sdfgi_min_cell_size = 0.4
+		env.sdfgi_energy = 0.8
+		env.ssil_enabled = false   # SDFGI даёт отражённый свет сам
 	var we := WorldEnvironment.new()
 	we.environment = env
 	root.add_child(we)
@@ -138,13 +171,66 @@ static func _environment(root: Node3D, quality: int, preset: MapPreset) -> void:
 	sun.rotation = Vector3(deg_to_rad(-at.elev), preset.sun_azimuth, 0)
 	sun.light_color = at.sun
 	sun.light_energy = at.energy
-	sun.light_angular_distance = 0.5
+	# Угловой размер источника — мягкость теней: солнце ясным днём, рассеянный свет в пасмурно/туман.
+	sun.light_angular_distance = at.ang
 	sun.shadow_enabled = quality >= 1
-	sun.directional_shadow_max_distance = 260.0 if quality >= 2 else 160.0
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality >= 2 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.shadow_blur = 1.0 + at.ang * 0.4
+	sun.shadow_bias = 0.04
+	sun.shadow_normal_bias = 1.2
+	sun.directional_shadow_max_distance = 320.0 if quality >= 2 else 220.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_split_1 = 0.06
+	sun.directional_shadow_split_2 = 0.16
+	sun.directional_shadow_split_3 = 0.4
+	sun.directional_shadow_blend_splits = quality >= 2
+	sun.directional_shadow_fade_start = 0.85
 	sun.light_volumetric_fog_energy = 1.4
 	sun.name = "Sun"
 	root.add_child(sun)
+
+
+## Атрибуты FPV-камеры: инерционная автоэкспозиция в пределах, заданных временем суток
+## (ночь не вытягивается в день, против солнца кадр темнеет, в тени — светлеет).
+static func camera_attributes(daytime: int) -> CameraAttributesPractical:
+	var at := atmosphere(daytime)
+	var ca := CameraAttributesPractical.new()
+	ca.auto_exposure_enabled = true
+	ca.auto_exposure_speed = 0.9
+	# Опорная средняя яркость сцены ae_lum даёт ту же экспозицию, что ручная tonemap_exposure.
+	# Вытянуть тёмный кадр можно не больше чем в ae_up раз, затемнить яркий — до 2,5 раза.
+	# Пределы задаются чувствительностью (ISO): яркость = ISO × 12,5 / 100 / 100.
+	var lum: float = at.ae_lum
+	ca.auto_exposure_scale = lum
+	ca.auto_exposure_min_sensitivity = lum / float(at.ae_up) / 0.00125
+	ca.auto_exposure_max_sensitivity = lum * 2.5 / 0.00125
+	return ca
+
+
+## Настройки вьюпорта и глобальные качества эффектов по уровню графики.
+## 0 — MSAA+FXAA как раньше; 1–2 — TAA (сглаживает и мелкую листву/траву, и тени).
+static func apply_viewport(vp: Viewport, quality: int) -> void:
+	if vp == null:
+		return
+	if quality >= 1:
+		vp.msaa_3d = Viewport.MSAA_DISABLED
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		vp.use_taa = true
+	else:
+		vp.msaa_3d = Viewport.MSAA_2X
+		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+		vp.use_taa = false
+	vp.use_debanding = quality >= 1
+	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_4X if quality <= 1 else Viewport.ANISOTROPY_16X
+	var rs := RenderingServer
+	if quality >= 2:
+		rs.environment_set_volumetric_fog_volume_size(64, 64)
+		rs.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, true, 0.5, 2, 50.0, 300.0)
+		rs.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_MEDIUM, true, 0.5, 4, 50.0, 300.0)
+	else:
+		rs.environment_set_volumetric_fog_volume_size(48, 32)
+		rs.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM, true, 0.5, 2, 50.0, 300.0)
+		rs.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 2, 50.0, 300.0)
+	rs.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM if quality >= 2 else RenderingServer.SHADOW_QUALITY_SOFT_LOW)
 
 
 ## Косметические осадки вокруг камеры (только при quality ≥ 1). null — если на карте сухо.

@@ -111,6 +111,7 @@ func _build_backdrop() -> void:
 	var t := Terrain.new()
 	t.generate(20251111)
 	WorldBuilder.build(t, backdrop, mini(Settings.quality, 1))
+	WorldBuilder.apply_viewport(get_viewport(), mini(Settings.quality, 1))
 	for i in 8:
 		var col: Color = SimConst.PLAYER_COLORS[i]
 		var s := ShelterBuilder.build(i % 4, col, "", i)

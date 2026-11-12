@@ -62,8 +62,14 @@ func _process(delta: float) -> void:
 	if _t >= _shot_at:
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(_shot_path)
+		var small := img.duplicate() as Image
+		small.resize(64, 36, Image.INTERPOLATE_BILINEAR)
+		var luma := 0.0
+		for y in 36:
+			for x in 64:
+				luma += small.get_pixel(x, y).get_luminance()
 		print("screenshot: ", _shot_path, "  fps: ", Engine.get_frames_per_second(), "  draw calls: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			"  primitives: ", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
-			"  gpu ms: %.2f  cpu ms: %.2f" % [_gpu_sum / maxi(_frames, 1), _cpu_sum / maxi(_frames, 1)])
+			"  gpu ms: %.2f  cpu ms: %.2f  luma: %.3f" % [_gpu_sum / maxi(_frames, 1), _cpu_sum / maxi(_frames, 1), luma / (64.0 * 36.0)])
 		_shot_path = ""
 		get_tree().quit()
