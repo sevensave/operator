@@ -63,9 +63,9 @@ void fragment() {
 	float w_dry = smoothstep(0.55, 0.75, m60 * 0.7 + m300 * 0.5) * 0.9;
 	float w_soil = smoothstep(0.3, 0.6, path) + smoothstep(0.72, 0.8, m25) * 0.6 + smoothstep(0.25, 0.35, slope) * 0.5;
 	float w_mud = smoothstep(0.55, 0.75, path) * smoothstep(0.35, 0.6, m25 + wetness * 0.3);
-	float w_gravel = (1.0 - max(sn_h, snow_cover)) * smoothstep(0.2, 0.3, slope) * smoothstep(0.35, 0.25, slope) * 0.8 + smoothstep(0.68, 0.72, path) * smoothstep(0.6, 0.5, m25) * 0.6;
+	float w_gravel = (1.0 - max(sn_h, snow_cover)) * smoothstep(0.2, 0.3, slope) * (1.0 - smoothstep(0.25, 0.35, slope)) * 0.8 + smoothstep(0.68, 0.72, path) * (1.0 - smoothstep(0.5, 0.6, m25)) * 0.6;
 	float w_rock = smoothstep(0.19, 0.29, slope + (m25 - 0.5) * 0.08);
-	float w_snow = max(sn_h, snow_cover) * smoothstep(0.5 + snow_cover * 0.15, 0.25, slope) * (1.0 - w_mud * 0.6);
+	float w_snow = max(sn_h, snow_cover) * (1.0 - smoothstep(0.25, 0.5 + snow_cover * 0.15, slope)) * (1.0 - w_mud * 0.6);
 
 	if (far_mode) {
 		vec3 c = mix(grass, dry, w_dry * 0.6);
@@ -191,7 +191,7 @@ void fragment() {
 		dn += hn(texture(nrm_arr, vec3(uvs * 0.5, 6.0))) * fw[6] * 0.3;
 	}
 	// Детальные нормали вблизи (до 30 м) — мелкий масштаб той же травы/грунта.
-	float near_k = lite ? 0.0 : smoothstep(30.0, 8.0, dist) * (1.0 - fw[6]) * (1.0 - fw[5]);
+	float near_k = lite ? 0.0 : (1.0 - smoothstep(8.0, 30.0, dist)) * (1.0 - fw[6]) * (1.0 - fw[5]);
 	if (near_k > 0.0) {
 		vec4 dt = texture(nrm_arr, vec3(p.xz * 2.1, fw[2] + fw[3] > 0.5 ? 2.0 : 0.0));
 		dn += hn(dt) * 0.5 * near_k;
@@ -209,7 +209,7 @@ void fragment() {
 		c *= 1.0 - wet * 0.35 * porous;
 		rough = mix(rough, rough * 0.55, wet);
 		float h = fw[3] * hgts[3] + fw[2] * hgts[2] + (1.0 - fw[3] - fw[2]) * 1.0;
-		float puddle = wet * smoothstep(0.42, 0.3, h) * smoothstep(0.4, 0.7, path);
+		float puddle = wet * (1.0 - smoothstep(0.3, 0.42, h)) * smoothstep(0.4, 0.7, path);
 		c = mix(c, c * 0.35 + vec3(0.02, 0.025, 0.03), puddle);
 		rough = mix(rough, 0.04, puddle);
 		dn *= 1.0 - puddle;

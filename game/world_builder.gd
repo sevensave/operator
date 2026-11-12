@@ -6,13 +6,12 @@ const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 
 
 const SKY_SHADER := preload("res://shaders/sky.gdshader")
-const TREE_SHADER := preload("res://shaders/tree.gdshader")
 
 
 static func build(terrain: Terrain, root: Node3D, quality: int) -> void:
 	_environment(root, quality, terrain.preset)
 	_ground(terrain, root, quality)
-	_trees(terrain, root)
+	FoliageBuilder.build(terrain, root, quality)
 	_ruins(terrain, root)
 
 
@@ -280,6 +279,8 @@ static func _ground(terrain: Terrain, root: Node3D, quality := 1) -> void:
 	var dirt := FastNoiseLite.new()
 	dirt.seed = terrain.seed + 5
 	dirt.frequency = 0.01
+	var path_mask := PackedFloat32Array()
+	path_mask.resize(n * n)
 	# Вершины
 	for zi in n:
 		for xi in n:
@@ -296,7 +297,9 @@ static func _ground(terrain: Terrain, root: Node3D, quality := 1) -> void:
 				var t := clampf((p - a).dot(dir), 0.0, a.length())
 				var dist := (a + dir * t).distance_to(p)
 				road = maxf(road, smoothstep(9.0, 3.0, dist + dirt.get_noise_2d(x, z) * 6.0))
-			st.set_color(Color(road * 0.8 + maxf(0.0, dirt.get_noise_2d(x * 2.0, z * 2.0)) * 0.4, 0, 0))
+			var mask := road * 0.8 + maxf(0.0, dirt.get_noise_2d(x * 2.0, z * 2.0)) * 0.4
+			path_mask[zi * n + xi] = mask
+			st.set_color(Color(mask, 0, 0))
 			st.set_normal(nrm)
 			st.set_uv(Vector2(x, z) * 0.05)
 			st.add_vertex(Vector3(x, h, z))
@@ -310,6 +313,7 @@ static func _ground(terrain: Terrain, root: Node3D, quality := 1) -> void:
 			st.add_index(i + n + 1)
 			st.add_index(i + n)
 	var mesh := st.commit()
+	terrain.set_meta("path_mask", path_mask)   # для травы и мелочи (FoliageBuilder)
 	var mat := ground_material(terrain.preset, quality)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -457,44 +461,6 @@ static func _cone(st: SurfaceTool, base: Vector3, r0: float, r1: float, h: float
 		st.add_vertex(base)
 		st.add_vertex(p1)
 		st.add_vertex(p0)
-
-
-static func _trees(terrain: Terrain, root: Node3D) -> void:
-	var preset := terrain.preset
-	var pal := palette(preset.biome)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_custom_data = true
-	var kind := preset.tree_kind
-	if kind == MapPreset.TreeKind.LEAFY and preset.biome == MapPreset.Biome.WINTER:
-		kind = MapPreset.TreeKind.DEAD   # зимой лиственные стоят голые
-	mm.mesh = tree_mesh(kind)
-	mm.instance_count = terrain.trees.size()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = terrain.seed + 3
-	var leafy: Array = pal.leafy
-	for i in terrain.trees.size():
-		var t := terrain.trees[i]
-		var g := terrain.height_at(t.x, t.y)
-		var h := t.w - g
-		var s := h / 7.0
-		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * (t.z / 2.0) * 1.1, s, s * (t.z / 2.0) * 1.1))
-		mm.set_instance_transform(i, Transform3D(b, Vector3(t.x, g - 0.3, t.y)))
-		var tint := rng.randf_range(0.82, 1.18)
-		var crown: Color = pal.spruce if preset.tree_kind == MapPreset.TreeKind.SPRUCE else leafy[rng.randi() % leafy.size()]
-		crown = Color(crown.r * tint, crown.g * tint * rng.randf_range(0.95, 1.06), crown.b * tint, rng.randf())
-		mm.set_instance_custom_data(i, crown)
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = mm
-	var mat := ShaderMaterial.new()
-	mat.shader = TREE_SHADER
-	var trunk := Color(0.28, 0.20, 0.14) if kind != MapPreset.TreeKind.DEAD else Color(0.34, 0.30, 0.26)
-	mat.set_shader_parameter("trunk_color", Vector3(trunk.r, trunk.g, trunk.b))
-	mat.set_shader_parameter("wind_dir", Vector2(cos(preset.wind_dir), sin(preset.wind_dir)))
-	mat.set_shader_parameter("sway", 0.06 + preset.wind_base * 0.06)
-	mi.material_override = mat
-	mi.name = "Forest"
-	root.add_child(mi)
 
 
 static func _ruins(terrain: Terrain, root: Node3D) -> void:

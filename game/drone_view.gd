@@ -16,7 +16,7 @@ void fragment() {
 	float ang = atan(lp.z, lp.x);
 	float streak = 0.75 + 0.25 * sin(ang * 2.0 - TIME * 50.0);
 	float a = spin * (0.05 + 0.17 * smoothstep(0.2, 1.0, r)) * streak;
-	a += spin * smoothstep(0.93, 0.98, r) * smoothstep(1.0, 0.98, r) * 0.22;
+	a += spin * smoothstep(0.93, 0.98, r) * (1.0 - smoothstep(0.98, 1.0, r)) * 0.22;
 	ALBEDO = tint;
 	ROUGHNESS = 0.5;
 	ALPHA = clamp(a, 0.0, 1.0);
@@ -61,7 +61,7 @@ void vertex() {
 void fragment() {
 	float r = length(UV - 0.5) * 2.0;
 	float halo = pow(clamp(1.0 - r, 0.0, 1.0), 2.0) * 0.55;
-	float core = smoothstep(0.22, 0.0, r);
+	float core = (1.0 - smoothstep(0.0, 0.22, r));
 	float pulse = 0.8 + 0.2 * sin(TIME * 6.0);
 	ALBEDO = mix(tint, vec3(1.0), core * 0.6) * 1.6;
 	ALPHA = clamp(halo * pulse + core, 0.0, 1.0);

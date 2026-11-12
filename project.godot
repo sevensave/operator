@@ -44,6 +44,17 @@ lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=2
 environment/defaults/default_clear_color=Color(0.55, 0.6, 0.62, 1)
 
+[shader_globals]
+
+view_center={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+wind_vec={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+
 [autoload]
 
 Settings="*res://game/settings.gd"

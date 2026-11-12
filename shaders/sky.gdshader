@@ -124,7 +124,7 @@ void sky() {
 	}
 
 	// Земля под горизонтом (дальше дальней земли) — цвет дымки.
-	col = mix(col, ground_color * sky_energy, smoothstep(0.0, -0.12, h));
+	col = mix(col, ground_color * sky_energy, (1.0 - smoothstep(-0.12, 0.0, h)));
 
 	// Звёзды.
 	if (stars > 0.0 && h > 0.0 && !AT_CUBEMAP_PASS) {
@@ -132,7 +132,7 @@ void sky() {
 		vec2 cell = floor(g);
 		float s = hash12(cell);
 		vec2 pos = fract(g) - 0.5 - (vec2(hash12(cell + 3.1), hash12(cell + 7.7)) - 0.5) * 0.6;
-		float star = step(0.985, s) * smoothstep(0.12, 0.0, length(pos)) * (0.5 + 0.5 * sin(TIME * 2.0 + s * 60.0));
+		float star = step(0.985, s) * (1.0 - smoothstep(0.0, 0.12, length(pos))) * (0.5 + 0.5 * sin(TIME * 2.0 + s * 60.0));
 		col += vec3(0.85, 0.9, 1.0) * star * stars * smoothstep(0.02, 0.2, h);
 	}
 	COLOR = col;

@@ -84,7 +84,7 @@ render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabl
 instance uniform float age = 0.0;
 void fragment() {
 	float r = length(UV - 0.5) * 2.0;
-	float ring = smoothstep(0.75, 0.93, r) * smoothstep(1.0, 0.93, r);
+	float ring = smoothstep(0.75, 0.93, r) * (1.0 - smoothstep(0.93, 1.0, r));
 	ALBEDO = vec3(1.0, 0.8, 0.55) * ring * (1.0 - age) * 1.2;
 	ALPHA = 1.0;
 }
