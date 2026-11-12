@@ -273,19 +273,6 @@ static func precipitation(preset: MapPreset, quality: int) -> GPUParticles3D:
 	return p
 
 
-static func _noise_tex(freq: float, seamless := true) -> NoiseTexture2D:
-	var n := FastNoiseLite.new()
-	n.frequency = freq
-	n.fractal_octaves = 4
-	var t := NoiseTexture2D.new()
-	t.noise = n
-	t.width = 512
-	t.height = 512
-	t.seamless = seamless
-	t.generate_mipmaps = true
-	return t
-
-
 static func _ground(terrain: Terrain, root: Node3D) -> void:
 	var n := Terrain.N
 	var st := SurfaceTool.new()
@@ -326,8 +313,8 @@ static func _ground(terrain: Terrain, root: Node3D) -> void:
 	var pal := palette(terrain.preset.biome)
 	var mat := ShaderMaterial.new()
 	mat.shader = TERRAIN_SHADER
-	mat.set_shader_parameter("detail_noise", _noise_tex(0.02))
-	mat.set_shader_parameter("macro_noise", _noise_tex(0.008))
+	mat.set_shader_parameter("detail_noise", SurfaceLib.noise_tex(0.02))
+	mat.set_shader_parameter("macro_noise", SurfaceLib.noise_tex(0.008))
 	for key in ["grass_a", "grass_b", "dirt", "rock", "snow"]:
 		var col: Color = pal[key]
 		mat.set_shader_parameter(key, Vector3(col.r, col.g, col.b))
@@ -540,7 +527,7 @@ static func structure_material() -> ShaderMaterial:
 	if _structure_mat == null:
 		_structure_mat = ShaderMaterial.new()
 		_structure_mat.shader = STRUCTURE_SHADER
-		_structure_mat.set_shader_parameter("noise_tex", _noise_tex(0.03))
+		_structure_mat.set_shader_parameter("noise_tex", SurfaceLib.noise_tex(0.03))
 	return _structure_mat
 
 
