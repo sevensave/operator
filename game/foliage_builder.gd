@@ -202,7 +202,7 @@ static func tree_mesh_near(kind: int, variant: int) -> ArrayMesh:
 				var a0 := rng.randf() * TAU
 				for k in n:
 					var a := a0 + TAU * k / n + rng.randf_range(-0.25, 0.25)
-					var droop := rr * rng.randf_range(0.25, 0.45)
+					var droop := minf(rr * rng.randf_range(0.25, 0.45), y - 0.03)
 					var tip := Vector3(cos(a) * rr, y - droop, sin(a) * rr)
 					var shade := 0.72 + 0.4 * y
 					_card(leaf, Vector3(0, y, 0), tip, rr * 0.55 + 0.03, Vector3(0, 0.55, 0), Color(shade, shade, shade, 1))
@@ -215,8 +215,32 @@ static func tree_mesh_near(kind: int, variant: int) -> ArrayMesh:
 	bark.generate_tangents()
 	bark.commit(mesh)
 	leaf.commit(mesh)
+	mesh = _fit_cylinder(mesh)
 	_meshes[key] = mesh
 	return mesh
+
+
+## Вписывает сетку в нормированный цилиндр: радиус ≤ CROWN_R, высота в [0, 1]
+## (карточки торчат углами за ось ветки — сжимаем всю сетку целиком, форма сохраняется).
+static func _fit_cylinder(src: ArrayMesh) -> ArrayMesh:
+	var max_r := 0.0
+	var max_y := 0.0
+	for si in src.get_surface_count():
+		for p: Vector3 in src.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+			max_r = maxf(max_r, Vector2(p.x, p.z).length())
+			max_y = maxf(max_y, p.y)
+	var kr := minf(1.0, CROWN_R / maxf(max_r, 0.001))
+	var ky := minf(1.0, 1.0 / maxf(max_y, 0.001))
+	var out := ArrayMesh.new()
+	for si in src.get_surface_count():
+		var arr := src.surface_get_arrays(si)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		for i in verts.size():
+			var v := verts[i]
+			verts[i] = Vector3(v.x * kr, maxf(v.y * ky, 0.0), v.z * kr)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return out
 
 
 ## Дальняя сетка: прежний низкополигональный силуэт, нормированный в тот же цилиндр.
@@ -566,9 +590,19 @@ static func bush_mesh() -> ArrayMesh:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 55
 	for i in 5:
-		var c := Vector3(rng.randf_range(-0.25, 0.25), rng.randf_range(0.2, 0.32), rng.randf_range(-0.25, 0.25))
-		_clump(st, rng, c, 0.24, Vector3(0, 0.15, 0))
+		var c := Vector3(rng.randf_range(-0.25, 0.25), rng.randf_range(0.18, 0.24), rng.randf_range(-0.25, 0.25))
+		_clump(st, rng, c, 0.2, Vector3(0, 0.15, 0))
 	var mesh := st.commit()
+	# Ниже 0,6 м с запасом на масштаб экземпляра (до 1,05).
+	var top := mesh.get_aabb().end.y
+	if top > 0.55:
+		var arr := mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		for i in verts.size():
+			verts[i].y *= 0.55 / top
+		arr[Mesh.ARRAY_VERTEX] = verts
+		mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	_meshes.bush = mesh
 	return mesh
 
@@ -698,6 +732,7 @@ static func _decor(terrain: Terrain, root: Node3D, quality: int) -> void:
 		mi.visibility_range_end_margin = 30.0
 		mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		mi.name = "Decor_" + key
+		mi.set_meta("xforms", list)   # расстановка для проверок (headless MultiMesh не хранит матрицы)
 		root.add_child(mi)
 
 

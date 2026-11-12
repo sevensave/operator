@@ -111,7 +111,7 @@ func _ready() -> void:
 	cam.attributes = WorldBuilder.camera_attributes(feed.terrain.preset.daytime)
 	add_child(cam)
 	cam.current = true
-	WorldBuilder.apply_viewport(get_viewport(), quality)
+	WorldBuilder.apply_viewport(get_viewport(), quality, Settings.render_scale)
 
 	var post_layer := CanvasLayer.new()
 	post_layer.layer = 0

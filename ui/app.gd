@@ -111,7 +111,7 @@ func _build_backdrop() -> void:
 	var t := Terrain.new()
 	t.generate(20251111)
 	WorldBuilder.build(t, backdrop, mini(Settings.quality, 1))
-	WorldBuilder.apply_viewport(get_viewport(), mini(Settings.quality, 1))
+	WorldBuilder.apply_viewport(get_viewport(), mini(Settings.quality, 1), Settings.render_scale)
 	for i in 8:
 		var col: Color = SimConst.PLAYER_COLORS[i]
 		var s := ShelterBuilder.build(i % 4, col, "", i)
@@ -840,10 +840,19 @@ func show_models() -> void:
 
 func show_settings() -> void:
 	var box := _screen("Settings", 720)
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", 3)   # две строки графики добавились — экран помещается в 900 px
 	_title(box, "Настройки", "", "Оператор")
 	var q := _options(["Низкое", "Среднее", "Высокое"], Settings.quality)
 	_row(box, "Качество графики", q)
+	var cf := _options(["Выключен", "Слабый", "Полный"], Settings.camera_filter)
+	_row(box, "Фильтр камеры", cf)
+	const SCALES := [1.0, 0.85, 0.7, 0.5]
+	var rs_idx := 0
+	for i in SCALES.size():
+		if absf(Settings.render_scale - SCALES[i]) < 0.01:
+			rs_idx = i
+	var rsc := _options(["100%", "85%", "70%", "50%"], rs_idx)
+	_row(box, "Масштаб рендера", rsc)
 	var fs := CheckButton.new()
 	fs.text = "Полный экран"
 	fs.button_pressed = Settings.fullscreen
@@ -880,11 +889,13 @@ func show_settings() -> void:
 	host.text = Settings.server_host
 	host.placeholder_text = "по умолчанию: %s" % NetConfig.DEFAULT_HOST
 	_row(box, "Адрес сервера", host)
-	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв (сбивает и чужие дроны рядом), R — автозахват чужого дрона под прицелом (повторно или движение ручек — отмена), F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, Y — автозахват, X — сеть, LB/RB — тип дрона. Помощь высоты: у коптера в аркаде с газом в центре дрон сам держит запас над рельефом и деревьями; газ вниз — отключить.", 15, UiTheme.DIM)
+	var help := UiTheme.label("Управление: W/S — газ (в аркаде S — снижение, в полный ход быстрое), A/D — поворот, мышь или стрелки — наклон, Q/E — крен, Shift — форсаж, Пробел — подрыв (сбивает и чужие дроны рядом), R — автозахват чужого дрона под прицелом (повторно или движение ручек — отмена), F — сеть, 1/2 — тип дрона, C — аркада/акро, Tab — таблица, Esc — меню. Геймпад: левый стик — газ и поворот, правый — наклон, RT — форсаж, A — подрыв, Y — автозахват, X — сеть, LB/RB — тип дрона. Помощь высоты: у коптера в аркаде с газом в центре дрон сам держит запас над рельефом и деревьями; газ вниз — отключить.", 13, UiTheme.DIM)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(help)
 	_actions(box, [UiTheme.primary("Сохранить", func():
 		Settings.quality = q.selected
+		Settings.camera_filter = cf.selected
+		Settings.render_scale = SCALES[rsc.selected]
 		Settings.fullscreen = fs.button_pressed
 		Settings.vsync = vs.button_pressed
 		Settings.show_fps = fps.button_pressed

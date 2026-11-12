@@ -209,7 +209,7 @@ static func camera_attributes(daytime: int) -> CameraAttributesPractical:
 
 ## Настройки вьюпорта и глобальные качества эффектов по уровню графики.
 ## 0 — MSAA+FXAA как раньше; 1–2 — TAA (сглаживает и мелкую листву/траву, и тени).
-static func apply_viewport(vp: Viewport, quality: int) -> void:
+static func apply_viewport(vp: Viewport, quality: int, render_scale := 1.0) -> void:
 	if vp == null:
 		return
 	if quality >= 1:
@@ -221,6 +221,10 @@ static func apply_viewport(vp: Viewport, quality: int) -> void:
 		vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 		vp.use_taa = false
 	vp.use_debanding = quality >= 1
+	# Масштаб 3D-рендера: ниже 100% — апскейл FSR (интерфейс и фильтр камеры — в полном разрешении).
+	var sc := clampf(render_scale, 0.5, 1.0)
+	vp.scaling_3d_scale = sc
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.99 else Viewport.SCALING_3D_MODE_BILINEAR
 	vp.anisotropic_filtering_level = Viewport.ANISOTROPY_4X if quality <= 1 else Viewport.ANISOTROPY_16X
 	var rs := RenderingServer
 	if quality >= 2:
