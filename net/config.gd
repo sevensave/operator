@@ -2,11 +2,11 @@ class_name NetConfig
 ## Адрес игрового сервера. Порядок: переменная окружения OPERATOR_SERVER («хост» или «хост:порт»),
 ## затем user://settings.cfg ([net] host/port), затем значения по умолчанию ниже.
 
-## Адрес выделенного сервера (хост nether). Локально перекрывается OPERATOR_SERVER или настройками.
-const DEFAULT_HOST := "150.251.139.13"
+## Адрес игрового сервера. Локально перекрывается OPERATOR_SERVER или настройками.
+const DEFAULT_HOST := "operator.wkiseven.me"
 const DEFAULT_PORT := 27630
 const PROTOCOL_VERSION := 2
-const GAME_VERSION := "0.4.0"
+const GAME_VERSION := "0.4.1"
 
 
 static func host() -> String:

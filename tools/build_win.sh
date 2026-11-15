@@ -11,7 +11,7 @@ test -f build/win/Operator.exe && test -f build/win/Operator.pck
 ZIP="dist/Operator-$VER-win-x64.zip"
 rm -f "$ZIP"
 if command -v zip >/dev/null; then
-  (cd build/win && zip -q -9 "../../$ZIP" Operator.exe Operator.pck)
+  (cd build/win && zip -q -X -9 "../../$ZIP" Operator.exe Operator.pck)
 else
   powershell -NoProfile -Command "Compress-Archive -Path build/win/Operator.exe,build/win/Operator.pck -DestinationPath '$ZIP' -Force"
 fi

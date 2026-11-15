@@ -61,7 +61,11 @@ OPERATOR_SERVER=127.0.0.1:27630 godot --path .       # клиент к лока�
 
 ## Сервер
 
-Боевой сервер — `150.251.139.13`, UDP `27630` (`DEFAULT_HOST`/`DEFAULT_PORT` в `net/config.gd`, ssh-хост `nether`); перекрывается `[net] host/port` в `user://settings.cfg` (есть поле в настройках) и переменной `OPERATOR_SERVER=хост:порт`. Деплой: `./server/deploy.sh nether 27630` — собирает Linux-бинарь и поднимает контейнер (`server/Dockerfile`, `server/docker-compose.yml`). Нужен открытый UDP-порт (по умолчанию 27630).
+Игровой сервер — `operator.wkiseven.me`, UDP `27630` (`DEFAULT_HOST`/`DEFAULT_PORT` в `net/config.gd`); перекрывается `[net] host/port` в `user://settings.cfg` (есть поле в настройках) и переменной `OPERATOR_SERVER=хост:порт`. Деплой на собственный сервер: `./server/deploy.sh <ssh-хост> 27630` — собирает Linux-бинарь и поднимает контейнер (`server/Dockerfile`, `server/docker-compose.yml`). Нужен открытый UDP-порт (по умолчанию 27630).
+
+Домен должен указывать на IP игрового сервера через DNS-запись `A` в режиме DNS only. При переносе сервера обновляйте эту запись; адрес в игре останется прежним.
+
+Для сетевой игры обновитесь до версии `0.4.1`. Если в настройках сохранён старый адрес, замените его на `operator.wkiseven.me:27630`; при пустом поле используется адрес по умолчанию.
 
 ## Релиз
 

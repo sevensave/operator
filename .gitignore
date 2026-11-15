@@ -4,3 +4,17 @@
 *.tmp
 .DS_Store
 /tools/out/
+
+# Локальные настройки редакторов, агентов и учётные данные.
+AGENTS.md
+CLAUDE.md
+.agents/
+.codex/
+.claude/
+.cursor/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+*.log

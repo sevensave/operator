@@ -8,8 +8,9 @@ PORT=${2:-27630}
 cd "$(dirname "$0")/.."
 ./tools/build_server.sh
 STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
 cp build/server/operator-server.x86_64 server/Dockerfile server/docker-compose.yml "$STAGE/"
-tar -czf - -C "$STAGE" . | ssh "$HOST" "mkdir -p /root/operator-server && tar -xzf - -C /root/operator-server"
+COPYFILE_DISABLE=1 tar -czf - -C "$STAGE" . | ssh "$HOST" "mkdir -p /root/operator-server && tar -xzf - -C /root/operator-server"
 ssh "$HOST" PORT="$PORT" bash -s <<'REMOTE'
 set -euo pipefail
 cd /root/operator-server

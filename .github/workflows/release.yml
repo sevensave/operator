@@ -67,8 +67,15 @@ jobs:
           $zip = "dist/Operator-$ver-win-x64.zip"
           if (-not (Test-Path $zip)) { throw "нет $zip" }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $names = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip)).Entries | ForEach-Object { $_.FullName }
-          if ($names -notcontains 'Operator.exe') { throw "Operator.exe не в корне архива: $names" }
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+            $names = @($archive.Entries | ForEach-Object { $_.FullName })
+            if ($names.Count -ne 2 -or $names -notcontains 'Operator.exe' -or $names -notcontains 'Operator.pck') {
+              throw "В архиве должны быть только Operator.exe и Operator.pck: $names"
+            }
+          } finally {
+            $archive.Dispose()
+          }
           $p = Start-Process build/win/Operator.exe -ArgumentList '--headless','--quit-after','90','--','--server','--port=27999' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "exe не стартует: $($p.ExitCode)" }
       - name: Загрузить в релиз
